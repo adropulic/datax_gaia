@@ -21,7 +21,7 @@ from keras import backend as K
 
 import argparse, ast
 import tensorflow as tf
-
+from tensorflow.keras import initializers
 matplotlib.rcParams.update({'font.family':'cmr10','font.size': 13})
 matplotlib.rcParams['axes.unicode_minus']=False
 matplotlib.rcParams['axes.labelsize']=15
@@ -169,7 +169,6 @@ elif weight_type == "log2d":
 
     print("Using log weights in vr and l")
 
-# %%
 elif weight_type == "log1d":
     counts_train, bins_train = np.histogram(vr_train,bins=np.linspace(-700,700,51))
     bin_centers_train = (bins_train[1:]+bins_train[:-1])/2
@@ -324,28 +323,29 @@ y_train = np.vstack([y_train, weights_train]).T
 y_val = np.vstack([y_val, weights_val]).T
 
 # %%
+initializer = tf.keras.initializers.glorot_uniform(seed=1)
 inputs = Input(shape=(len(use_cols),))
 nlayers = nnodes
-MeanEst = (Dense(nlayers, activation=activation))(inputs)
-MeanEst = (Dropout(0.1))(MeanEst)
-MeanEst = (Dense(nlayers, activation=activation))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
-MeanEst = (Dense(nlayers, activation=activation))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
-MeanEst = (Dense(nlayers, activation=activation))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
-MeanEst = (Dense(1, activation='linear'))(MeanEst)
+MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
+#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dense(1, activation='linear', kernel_initializer=initializer))(MeanEst)
 MeanModel = Model(inputs=[inputs], outputs=MeanEst)
 
-ConfEst= (Dense(nlayers, activation=activation))(inputs)
-ConfEst = (Dropout(0.1))(ConfEst)
-ConfEst= (Dense(nlayers, activation=activation))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
-ConfEst= (Dense(nlayers, activation=activation))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
-ConfEst= (Dense(nlayers, activation=activation))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
-ConfEst= (Dense(1, activation='relu'))(ConfEst)
+ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
+#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst= (Dense(1, activation='relu', kernel_initializer=initializer))(ConfEst)
 ConfModel = Model(inputs=[inputs], outputs=ConfEst)
 
 CombinedSub = Concatenate(axis=-1)([MeanModel(inputs), ConfModel(inputs)])
@@ -360,7 +360,7 @@ import os
 num_samp = str(data_test.shape[0])
 act_func = activation
 neurons = 'D'+str(nnodes)
-dropout = 'p1dropout'
+dropout = 'nodropout_seed1test1'
 lweights = weight_type
 spec = spec
 folder_name = 'G_train_2it_'+num_samp+'_'+act_func+'_'+neurons+'_'+dropout+'_'+input_vars+'_'+lweights+'_'+spec
@@ -579,7 +579,7 @@ CombinedModel.load_weights(folder_name+'/models_GALAXIA_nonn/' + 'ModelWeights.h
 test_preds_2 = CombinedModel.predict(X_test)
 y_low = -250
 y_high = 250
-#rescale test_preds_2[:,0]
+#rescale test_preds_2
 test_preds_2[:,0] = (test_preds_2[:,0] * stddev)+mu
 test_preds_2[:,1] = (test_preds_2[:,1] * stddev)+mu
 
@@ -627,11 +627,6 @@ from scipy.interpolate import interp1d
 from scipy.integrate import quad
 
 # %%
-def gaussian(x,mu,sigma):
-    prefactor = 1/(np.sqrt(2*np.pi)*sigma)
-    return prefactor*np.exp(-(x-mu)*(x-mu)/(2*sigma*sigma))
-
-# %%
 """
 ## Going to use Monte Carlo simulations to predict errorbars. 
 """
@@ -662,17 +657,15 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
     bin_values_list_th = []
     bin_values_list_phi = []
     
-    p_vals_list = []
     cdf_mc_list = []
-    gaussian_array = np.zeros(50)
     N = len((data_test['radial_velocity']).values)
     x_range = np.linspace(y_low,y_high,N)
     for mc_i in range(0,100):
         mc_vr_pred = []
         resample_test = []
         for star_i in range(0,len(test_preds_cut)):
+            #print(test_preds_cut[star_i,1])
             mc_vr_pred.append(np.random.normal(test_preds_cut[star_i,0],test_preds_cut[star_i,1]))
-            resample_test.append(np.random.normal((data_test['radial_velocity']).values[star_i],0))
 
         mc_vr_pred_list.append(mc_vr_pred)
         resample_test_list.append(resample_test)
@@ -683,7 +676,6 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
         
         plt.figure(2)
         hb = plt.hexbin((data_test['radial_velocity']).values, mc_vr_pred,gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200]);
-        plt.close(2)
         hb_list.append(hb.get_array());
         bin_values_list.append(n)
         
@@ -696,22 +688,18 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
         bin_values_list_th.append(n_th)
         bin_values_list_phi.append(n_phi)
         
-        plt.figure(3)
+        
         hb_r = plt.hexbin((data_test['vr']).values, vel_sph_coord[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250]);
-        plt.close(3)
         hb_list_r.append(hb_r.get_array());
         
-        plt.figure(4)
+        
         hb_th = plt.hexbin((data_test['vtheta']).values, vel_sph_coord[:,1],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250]);
-        plt.close(4)
         hb_list_th.append(hb_th.get_array());
         
-        plt.figure(5)
-        hb_phi = plt.hexbin((data_test['vphi']).values, vel_sph_coord[:,2],gridsize=100, norm = LogNorm(),extent=[-450, 0, -450, 0]);
-        plt.close(5)
+        
+        hb_phi = plt.hexbin((data_test['vphi']).values, vel_sph_coord[:,2],gridsize=100, norm = LogNorm(),extent=[-450, 250, -450, 250]);
         hb_list_phi.append(hb_phi.get_array());
-
-    median_mc_each_star = np.median(mc_vr_pred_list, axis = 0)
+        plt.close(2)
     
     bin_values_list_arr = np.array(bin_values_list)    
     max_array = bin_values_list_arr.max(axis=0)
@@ -730,7 +718,7 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
     max_array_phi = bin_values_list_phi_arr.max(axis=0)
     min_array_phi = bin_values_list_phi_arr.min(axis=0) 
 
-    return vel_sph_coord, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list, median_mc_each_star, resample_test_list
+    return vel_sph_coord, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list
 
 
 # %%
@@ -796,15 +784,11 @@ def reload_data_per_cut(thresh, thresh_string):
     return data_test
 
 # %%
-def generate_rand_from_pdf(pdf, x_grid, test_preds):
-    cdf = np.cumsum(pdf)
-    cdf = cdf / cdf[-1]
-    values = np.random.rand(len(test_preds[:,0]))
-    value_bins = np.searchsorted(cdf, values)
-    random_from_cdf = x_grid[value_bins]
-    return random_from_cdf
-
-# %%
+def kl_div(p, q, bin_width):
+    return sum(p[i]*bin_width * np.log2((p[i]*bin_width)/(q[i]*bin_width)) for i in range(len(p)))
+def gaussian(x,mu,sigma):
+    prefactor = 1/(np.sqrt(2*np.pi)*sigma)
+    return prefactor*np.exp(-(x-mu)*(x-mu)/(2*sigma*sigma))
 def plot_test(thresh, thresh_string):
     data_test = reload_data_per_cut(thresh, thresh_string)
     print('shape of data_test is '+str(data_test.shape))
@@ -815,7 +799,7 @@ def plot_test(thresh, thresh_string):
 
     y_low = -250
     y_high = 250
-    fig, ax = plt.subplots(nrows=7, ncols=3, sharex=False, sharey=False,figsize=(12,28))
+    fig, ax = plt.subplots(nrows=6, ncols=3, sharex=False, sharey=False,figsize=(12,24))
     plt.subplots_adjust(wspace = 0.3, hspace = 0.3)
     from matplotlib.colors import LogNorm
     
@@ -825,13 +809,30 @@ def plot_test(thresh, thresh_string):
     ax[1,0].set_ylabel(r'$v_{\rm{los}}^{\rm{pred}}$',labelpad=-10)
     ax[1,0].set_xlabel('$\sigma$',labelpad=-5)
     
+    def coeff_determination(y_true, y_pred):
+        SS_res =  sum(np.square( y_true-y_pred ))
+        SS_tot = sum(np.square( y_true - np.mean(y_true) ) )
+        return ( 1 - (SS_res/SS_tot)) 
+    Rsquare = coeff_determination((data_test['radial_velocity']).values, test_preds[:,0])
+    txt =('input vars = '+ str(use_cols)+ ', '+neurons+' '+num_samp+' '+act_func+' '+dropout+' '+lweights+' '+spec)
+    if not os.path.exists('Rsquare_list.txt'):
+        r_file= open("Rsquare_list.txt", "w")
+        r_file.write("\n")
+        if thresh == 0: r_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare))
+        else: r_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare))
+    else:
+        with open("Rsquare_list.txt", "a") as r_file:
+            r_file.write("\n")
+            if thresh == 0: r_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare))
+            else: r_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare))
+    r_file.close()
 
     hb = ax[0,2].hexbin((data_test['radial_velocity']).values, test_preds[:,0],gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200])
     x1 = np.linspace(-150,150,1000)
     y1 = x1
     ax[0,2].plot(x1,y1,'k--')
     ax[0,2].set_ylabel(r'$v_{\rm{los}}^{\rm{pred}}$',labelpad=-10)
-    ax[0,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$')
+    ax[0,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$, R2 = '+str('%.5f'%(Rsquare)))
     clb3 = plt.colorbar(hb,ax = ax[0,2])
     clb3.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
 
@@ -879,8 +880,8 @@ def plot_test(thresh, thresh_string):
     
     hist_test, bins_test, patches_test = ax[2,1].hist((data_test['radial_velocity']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5, fill = True, label = 'test' , density = True, zorder = 0)
     bin_centers_test = (bins_test[1:]+bins_test[:-1])/2
-    #vels_sph_pred_test, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list, median_mc_each_star,resample_test_list= monte_carlo(data_test, test_preds, thresh, thresh_string);
-    #ax[2,1].fill_between(bin_centers_test,min_array, max_array,label = 'MC spread',color = 'orange', zorder = 10, alpha = 0.5)
+    vels_sph_pred_test, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list= monte_carlo(data_test, test_preds, thresh, thresh_string);
+    ax[2,1].fill_between(bin_centers_test,min_array, max_array,label = 'MC spread',color = 'orange', zorder = 10, alpha = 0.5)
     #need to calculate MC kde by hand
     vbins = np.linspace(y_low,y_high,51)
     bin_centers = (vbins[1:]+vbins[:-1])/2
@@ -893,181 +894,145 @@ def plot_test(thresh, thresh_string):
     
     kde = gaussian_kde((data_test['radial_velocity']).values) #truth kde
     ax[2,1].plot(bin_centers_test,kde.evaluate(bin_centers_test),zorder = 30, color = 'green', label = 'truth kde' )
-    x_grid = bin_centers_test
 
     ax[2,1].plot(bin_centers_test, sum_normal,label = 'pred kde',color = 'red')
     
+    kl_divergence = kl_div(kde.evaluate(bin_centers_test),sum_normal, ((np.abs(y_low)+y_high)/50))
     
-    def func_sum_normal(x):
-        if x>= np.min(bin_centers_test) and x <= np.max(bin_centers_test): return kde_interp_func(x)
-        else: return 0.0
-    def func_truth(x):
-        return kde.evaluate(x)
-    def func_diff(x):
-        return np.abs(func_sum_normal(x) - func_truth(x))
-    
-    T_integral, T_abserr = quad(func_diff,-np.inf, np.inf)
-    print('T_integral '+str(T_integral))
-    
-    def func_truth_random(x):
-        return kde_random_samp.evaluate(x)
-    def func_diff_random(x): 
-        return np.abs(func_truth_random(x) - func_truth(x))
-    integral_list = []
-    rand_from_kde_list = []
-    kde_random_samp_list = []
-    for rand_samp_i in range(100):
-        random_from_kde = generate_rand_from_pdf(kde.evaluate(x_grid), x_grid, test_preds) #generating random samples from kde
-        rand_from_kde_list.append(random_from_kde)
-	#need to calculate kde of this new histogram and find integral with truth.
-        kde_random_samp = gaussian_kde(random_from_kde)
-        kde_random_samp_list.append(kde_random_samp)
-        iii_integral, iii_abserr = quad(func_diff_random ,-np.inf, np.inf)
-        print('iii_integral '+str(iii_integral))
-        integral_list.append(iii_integral)
-    num_int_gt_T = sum(int_i > T_integral for int_i in integral_list) 
-    p_value = num_int_gt_T/100.0
-    #ax[2,1].plot(bin_centers_test, np.abs(func_sum_normal(bin_centers_test)-
     ax[2,1].hist(test_preds[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'predicted', density = True, zorder = 20)
-    ax[2,1].set_xlabel(r'$v_{\rm{los}}$, pvalue = '+str(p_value))
+    ax[2,1].set_xlabel(r'$v_{\rm{los}}$, KL = '+str('%.5f'%(kl_divergence)))
     ax[2,1].legend(loc = "upper right",prop={'size': 10})
+    if not os.path.exists('KL_list.txt'): 
+    	a_file= open("KL_list.txt", "w")
+    	a_file.write("\n")
+        if thresh == 0: a_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    	else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    else:
+    	with open("KL_list.txt", "a") as a_file:
+      	    a_file.write("\n")
+    	    if thresh == 0: a_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    	    else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    a_file.close()
+    hb_mean=ax[2,2].hexbin((data_test['radial_velocity']).values, np.zeros_like((data_test['radial_velocity']).values),gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200])
+    hb_mean.set_array(np.mean(hb_list, axis = 0))
+    x1 = np.linspace(-150,150,1000)
+    y1 = x1
+    ax[2,2].plot(x1,y1,'k--')
+    ax[2,2].set_ylabel(r'$v_{\rm{los}}^{\rm{pred, MC}}$',labelpad=-10)
+    ax[2,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$')
+    hb_mean.set_clim(1,(np.max(hb_list)/2)*1.5)
+    clb6 = plt.colorbar(hb_mean,ax = ax[2,2])
+    clb6.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
     
+    #'vr','vphi','vtheta'
+    hb_r = ax[3,0].hexbin((data_test['vr']).values, vels_sph_pred_test[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250],rasterized=True)
+    x1 = np.linspace(-250,250,1000)
+    y1 = x1
+    ax[3,0].plot(x1,y1,'k--')
+    ax[3,0].set_ylabel(r'$v_{\rm{r}}^{\rm{pred}}$',labelpad=-10)
+    ax[3,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$')
+    clb7 = plt.colorbar(hb_r, ax = ax[3,0])
+    clb7.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
     
-   # hb_mean=ax[2,2].hexbin((data_test['radial_velocity']).values, np.zeros_like((data_test['radial_velocity']).values),gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200])
-   # hb_mean.set_array(np.mean(hb_list, axis = 0))
-   # x1 = np.linspace(-150,150,1000)
-   # y1 = x1
-   # ax[2,2].plot(x1,y1,'k--')
-   # ax[2,2].set_ylabel(r'$v_{\rm{los}}^{\rm{pred, MC}}$',labelpad=-10)
-   # ax[2,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$')
-   # hb_mean.set_clim(1,(np.max(hb_list)/2)*1.5)
-   # clb6 = plt.colorbar(hb_mean,ax = ax[2,2])
-   # clb6.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # #'vr','vphi','vtheta'
-   # hb_r = ax[3,0].hexbin((data_test['vr']).values, vels_sph_pred_test[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250],rasterized=True)
-   # x1 = np.linspace(-250,250,1000)
-   # y1 = x1
-   # ax[3,0].plot(x1,y1,'k--')
-   # ax[3,0].set_ylabel(r'$v_{\rm{r}}^{\rm{pred}}$',labelpad=-10)
-   # ax[3,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$')
-   # clb7 = plt.colorbar(hb_r, ax = ax[3,0])
-   # clb7.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # hb_t = ax[3,1].hexbin((data_test['vtheta']).values, vels_sph_pred_test[:,1],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
-   # x2 = np.linspace(-250,250,1000)
-   # y2 = x2
-   # ax[3,1].plot(x2,y2,'k--')
-   # ax[3,1].set_ylabel(r'$v_{\rm{\theta}}^{\rm{pred}}$',labelpad=-10)
-   # ax[3,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$')
-   # clb8 = plt.colorbar(hb_t,ax = ax[3,1])
-   # clb8.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # hb_p= ax[3,2].hexbin((data_test['vphi']).values, vels_sph_pred_test[:,2],gridsize=100, norm = LogNorm(),extent=[-450, 0, -450, 0])
-   # x3 = np.linspace(-450,0,1000)
-   # y3 = x3
-   # ax[3,2].plot(x3,y3,'k--')
-   # ax[3,2].set_ylabel(r'$v_{\rm{\phi}}^{\rm{pred}}$',labelpad=-5)
-   # ax[3,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$')
-   # clb9 = plt.colorbar(hb_p, ax = ax[3,2])
-   # clb9.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # hist_test_r, bins_test_r, patches_test_r = ax[4,0].hist((data_test['vr']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True,  label = 'test' )
-   # bin_centers_test_r = (bins_test_r[1:]+bins_test_r[:-1])/2
-   # ax[4,0].fill_between(bin_centers_test_r,min_array_r, max_array_r,label = 'MC spread',color = 'orange',alpha = 0.5)
-   # ax[4,0].hist(vels_sph_pred_test[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted')
-   # ax[4,0].set_xlabel(r'$v_{\rm{r}}$', labelpad =-2)
-   # ax[4,0].legend(loc = "upper right",prop={'size': 10})
-   # 
-   # hist_test_th, bins_test_th, patches_test_th = ax[4,1].hist((data_test['vtheta']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5,fill = True, label = 'test', zorder = 0)
-   # bin_centers_test_th = (bins_test_th[1:]+bins_test_th[:-1])/2
-   # ax[4,1].fill_between(bin_centers_test_th,min_array_th, max_array_th,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
-   # ax[4,1].hist(vels_sph_pred_test[:,1], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'predicted', zorder = 20)
-   # ax[4,1].set_xlabel(r'$v_{\rm{\theta}}$', labelpad =-2)
-   # ax[4,1].legend(loc = "upper right",prop={'size': 10})
-   # 
-   # hist_test_phi, bins_test_phi, patches_test_phi = ax[4,2].hist((data_test['vphi']).values, bins=50, range=(-450,0), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5,fill = True,  label = 'test', zorder = 0)
-   # bin_centers_test_phi = (bins_test_phi[1:]+bins_test_phi[:-1])/2
-   # ax[4,2].fill_between(bin_centers_test_phi,min_array_phi, max_array_phi,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
-   # ax[4,2].hist(vels_sph_pred_test[:,2], bins=50, range=(-450,0), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted', zorder = 20)
-   # ax[4,2].set_xlabel(r'$v_{\rm{\phi}}$', labelpad =-2)
-   # ax[4,2].legend(loc = "upper right",prop={'size': 10})
-   # 
-   # hb_mean_r=ax[5,0].hexbin((data_test['vr']).values, np.zeros_like((data_test['vr']).values), gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
-   # hb_mean_r.set_array(np.mean(hb_list_r, axis = 0))
-   # x1 = np.linspace(-250,250,1000)
-   # y1 = x1
-   # ax[5,0].plot(x1,y1,'k--')
-   # ax[5,0].set_ylabel(r'$v_{\rm{r}}^{\rm{pred, MC}}$',labelpad=-10)
-   # ax[5,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$')
-   # hb_mean_r.set_clim(1,(np.max(hb_list_r)/2)*1.5)
-   # clb10 = plt.colorbar(hb_mean_r,ax = ax[5,0])
-   # clb10.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # hb_mean_th=ax[5,1].hexbin((data_test['vtheta']).values, np.zeros_like((data_test['vtheta']).values), gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
-   # hb_mean_th.set_array(np.mean(hb_list_th, axis = 0))
-   # x1 = np.linspace(-250,250,1000)
-   # y1 = x1
-   # ax[5,1].plot(x1,y1,'k--')
-   # ax[5,1].set_ylabel(r'$v_{\rm{\theta}}^{\rm{pred, MC}}$',labelpad=-10)
-   # ax[5,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$')
-   # hb_mean_th.set_clim(1,(np.max(hb_list_th)/2)*1.5)
-   # clb11 = plt.colorbar(hb_mean_th,ax = ax[5,1])
-   # clb11.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-   # 
-   # hb_mean_phi=ax[5,2].hexbin((data_test['vphi']).values, np.zeros_like((data_test['vphi']).values), gridsize=100, norm = LogNorm(),extent=[-450, 0, -450, 0])
-   # hb_mean_phi.set_array(np.mean(hb_list_phi, axis = 0))
-   # x1 = np.linspace(-450,0,1000)
-   # y1 = x1
-   # ax[5,2].plot(x1,y1,'k--')
-   # ax[5,2].set_ylabel(r'$v_{\rm{\phi}}^{\rm{pred, MC}}$',labelpad=-10)
-   # ax[5,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$')
-   # hb_mean_phi.set_clim(1,(np.max(hb_list_phi)/2)*1.5)
-   # clb12 = plt.colorbar(hb_mean_phi,ax=ax[5,2])
-   # clb12.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
+    hb_t = ax[3,1].hexbin((data_test['vtheta']).values, vels_sph_pred_test[:,1],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
+    x2 = np.linspace(-250,250,1000)
+    y2 = x2
+    ax[3,1].plot(x2,y2,'k--')
+    ax[3,1].set_ylabel(r'$v_{\rm{\theta}}^{\rm{pred}}$',labelpad=-10)
+    ax[3,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$')
+    clb8 = plt.colorbar(hb_t,ax = ax[3,1])
+    clb8.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
+    
+    hb_p= ax[3,2].hexbin((data_test['vphi']).values, vels_sph_pred_test[:,2],gridsize=100, norm = LogNorm(),extent=[-450, 0, -450, 0])
+    x3 = np.linspace(-450,0,1000)
+    y3 = x3
+    ax[3,2].plot(x3,y3,'k--')
+    ax[3,2].set_ylabel(r'$v_{\rm{\phi}}^{\rm{pred}}$',labelpad=-5)
+    ax[3,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$')
+    clb9 = plt.colorbar(hb_p, ax = ax[3,2])
+    clb9.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
+    
+    hist_test_r, bins_test_r, patches_test_r = ax[4,0].hist((data_test['vr']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True,  label = 'test' )
+    bin_centers_test_r = (bins_test_r[1:]+bins_test_r[:-1])/2
+    ax[4,0].fill_between(bin_centers_test_r,min_array_r, max_array_r,label = 'MC spread',color = 'orange',alpha = 0.5)
+    ax[4,0].hist(vels_sph_pred_test[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted')
+    ax[4,0].set_xlabel(r'$v_{\rm{r}}$', labelpad =-2)
+    ax[4,0].legend(loc = "upper right",prop={'size': 10})
+    
+    hist_test_th, bins_test_th, patches_test_th = ax[4,1].hist((data_test['vtheta']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5,fill = True, label = 'test', zorder = 0)
+    bin_centers_test_th = (bins_test_th[1:]+bins_test_th[:-1])/2
+    ax[4,1].fill_between(bin_centers_test_th,min_array_th, max_array_th,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
+    ax[4,1].hist(vels_sph_pred_test[:,1], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'predicted', zorder = 20)
+    ax[4,1].set_xlabel(r'$v_{\rm{\theta}}$', labelpad =-2)
+    ax[4,1].legend(loc = "upper right",prop={'size': 10})
+    
+    hist_test_phi, bins_test_phi, patches_test_phi = ax[4,2].hist((data_test['vphi']).values, bins=50, range=(-450,0), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5,fill = True,  label = 'test', zorder = 0)
+    bin_centers_test_phi = (bins_test_phi[1:]+bins_test_phi[:-1])/2
+    ax[4,2].fill_between(bin_centers_test_phi,min_array_phi, max_array_phi,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
+    ax[4,2].hist(vels_sph_pred_test[:,2], bins=50, range=(-450,0), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted', zorder = 20)
+    ax[4,2].set_xlabel(r'$v_{\rm{\phi}}$', labelpad =-2)
+    ax[4,2].legend(loc = "upper right",prop={'size': 10})
+    
+    hb_mean_r=ax[5,0].hexbin((data_test['vr']).values, np.zeros_like((data_test['vr']).values), gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
+    hb_mean_r.set_array(np.mean(hb_list_r, axis = 0))
+    x1 = np.linspace(-250,250,1000)
+    y1 = x1
+    ax[5,0].plot(x1,y1,'k--')
+    ax[5,0].set_ylabel(r'$v_{\rm{r}}^{\rm{pred, MC}}$',labelpad=-10)
+    ax[5,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$')
+    hb_mean_r.set_clim(1,(np.max(hb_list_r)/2)*1.5)
+    clb10 = plt.colorbar(hb_mean_r,ax = ax[5,0])
+    clb10.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
+    
+    hb_mean_th=ax[5,1].hexbin((data_test['vtheta']).values, np.zeros_like((data_test['vtheta']).values), gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
+    hb_mean_th.set_array(np.mean(hb_list_th, axis = 0))
+    x1 = np.linspace(-250,250,1000)
+    y1 = x1
+    ax[5,1].plot(x1,y1,'k--')
+    ax[5,1].set_ylabel(r'$v_{\rm{\theta}}^{\rm{pred, MC}}$',labelpad=-10)
+    ax[5,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$')
+    hb_mean_th.set_clim(1,(np.max(hb_list_th)/2)*1.5)
+    clb11 = plt.colorbar(hb_mean_th,ax = ax[5,1])
+    clb11.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
+    
+    hb_mean_phi=ax[5,2].hexbin((data_test['vphi']).values, np.zeros_like((data_test['vphi']).values), gridsize=100, norm = LogNorm(),extent=[-450, 250, -450,250])
+    hb_mean_phi.set_array(np.mean(hb_list_phi, axis = 0))
+    x1 = np.linspace(-450,250,1000)
+    y1 = x1
+    ax[5,2].plot(x1,y1,'k--')
+    ax[5,2].set_ylabel(r'$v_{\rm{\phi}}^{\rm{pred, MC}}$',labelpad=-10)
+    ax[5,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$')
+    hb_mean_phi.set_clim(1,(np.max(hb_list_phi)/2)*1.5)
+    clb12 = plt.colorbar(hb_mean_phi,ax=ax[5,2])
+    clb12.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
    
-    ax[6,0].hist(integral_list,bins = 100, range = (0,1),histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5,fill = True, label = 'iii')
-    ax[6,0].axvline(T_integral, color='k', linestyle='dashed', linewidth=1, label = 'T_integral')
-    ax[6,0].legend(loc = "upper right",prop={'size': 10})
-
-    for hist_i in range(100):
-        import random
-        r = random.random()
-        b = random.random()
-        g = random.random()
-        color = (r, g, b)
-        ax[6,1].hist(random_from_kde[hist_i], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'random_samp_test', density = True)
-        ax[6,1].plot(bin_centers_test, kde_random_samp_list[hist_i].evaluate(bin_centers_test), c = color)
-    ax[6,1].hist((data_test['radial_velocity']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5, fill = True, label = 'test' , density = True)
-    ax[6,1].plot(bin_centers_test,kde.evaluate(bin_centers_test),zorder = 30, color = 'green', label = 'truth kde' )
-    #ax[6,1].legend(loc = "upper right",prop={'size': 10})
     txt =('input vars = '+ str(use_cols)+ ', '+neurons+' '+num_samp+' '+act_func+' '+dropout+' '+lweights+' '+spec)
     fig.suptitle(txt)
 
 
-    fig.savefig(folder_name+'/'+filename+'_withKSnew_sigmaleq_'+thresh_string+'.png',bbox_inches='tight',rasterized=True)
-    if thresh != 0: np.save(folder_name+'/'+filename+'_testpreds_sigmaleq_'+thresh_string+'.npy',test_preds)
+    fig.savefig(folder_name+'/'+filename+'_withKL_sigmaleq_'+thresh_string+'.png',bbox_inches='tight',rasterized=True)
+    np.save(folder_name+'/'+filename+'_testpreds_sigmaleq_'+thresh_string+'.npy',test_preds)
     clb1.remove()
     clb2.remove()
     clb3.remove()
     clb4.remove()
     clb5.remove()
-    #clb6.remove()
-    #clb7.remove()
-    #clb8.remove()
-    #clb9.remove()
-    #clb10.remove()
-    #clb11.remove()
-    #clb12.remove()
+    clb6.remove()
+    clb7.remove()
+    clb8.remove()
+    clb9.remove()
+    clb10.remove()
+    clb11.remove()
+    clb12.remove()
     
 
 # %%
-#if not os.path.exists(folder_name+'/'+filename+'_withKSnew_sigmaleq_0.png'):
-#rounded_quant= np.insert(rounded_quant,0,0.0)
-#quant_string = np.insert(quant_string,0, '0')
+#if not os.path.exists(folder_name+'/'+filename+'_withKL_sigmaleq_0.png'):
+rounded_quant= np.insert(rounded_quant,0,0.0)
+quant_string = np.insert(quant_string,0, '0')
 print(rounded_quant)
 print(quant_string)
-
+#plot_test(0,'0')
 
 for elem_i in range(len(rounded_quant)):
     save_indices(rounded_quant[elem_i],quant_string[elem_i])
