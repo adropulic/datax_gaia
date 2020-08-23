@@ -327,24 +327,24 @@ initializer = tf.keras.initializers.glorot_uniform(seed=1)
 inputs = Input(shape=(len(use_cols),))
 nlayers = nnodes
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
-#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-#MeanEst = (Dropout(0.1))(MeanEst)
+MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(1, activation='linear', kernel_initializer=initializer))(MeanEst)
 MeanModel = Model(inputs=[inputs], outputs=MeanEst)
 
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
-#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-#ConfEst = (Dropout(0.1))(ConfEst)
+ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(1, activation='relu', kernel_initializer=initializer))(ConfEst)
 ConfModel = Model(inputs=[inputs], outputs=ConfEst)
 
@@ -360,7 +360,7 @@ import os
 num_samp = str(data_test.shape[0])
 act_func = activation
 neurons = 'D'+str(nnodes)
-dropout = 'nodropout_seed1test1'
+dropout = 'p1dropout_seed1'
 lweights = weight_type
 spec = spec
 folder_name = 'G_train_2it_'+num_samp+'_'+act_func+'_'+neurons+'_'+dropout+'_'+input_vars+'_'+lweights+'_'+spec
@@ -789,6 +789,9 @@ def kl_div(p, q, bin_width):
 def gaussian(x,mu,sigma):
     prefactor = 1/(np.sqrt(2*np.pi)*sigma)
     return prefactor*np.exp(-(x-mu)*(x-mu)/(2*sigma*sigma))
+def chi_square(y_true, y_pred,sigma):
+    chi_sq = sum((y_true-y_pred)*(y_true-y_pred)*(1/(sigma*sigma)))*(1/(len(y_true)-1))
+    return chi_sq
 def plot_test(thresh, thresh_string):
     data_test = reload_data_per_cut(thresh, thresh_string)
     print('shape of data_test is '+str(data_test.shape))
@@ -827,12 +830,25 @@ def plot_test(thresh, thresh_string):
             else: r_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare))
     r_file.close()
 
+    Xsquare = chi_square((data_test['radial_velocity']).values, test_preds[:,0], test_preds[:,1])
+    if not os.path.exists('Xsquare_list.txt'):
+        x_file= open("Xsquare_list.txt", "w")
+        x_file.write("\n")
+        if thresh == 0: x_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare))
+        else: x_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare))
+    else:
+        with open("Xsquare_list.txt", "a") as x_file:
+            x_file.write("\n")
+            if thresh == 0: x_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare))
+            else: x_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare))
+    x_file.close()
+
     hb = ax[0,2].hexbin((data_test['radial_velocity']).values, test_preds[:,0],gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200])
     x1 = np.linspace(-150,150,1000)
     y1 = x1
     ax[0,2].plot(x1,y1,'k--')
     ax[0,2].set_ylabel(r'$v_{\rm{los}}^{\rm{pred}}$',labelpad=-10)
-    ax[0,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$, R2 = '+str('%.5f'%(Rsquare)))
+    ax[0,2].set_xlabel(r'$v_{\rm{los}}^{\rm{meas}}$, R2='+str('%.3f'%(Rsquare))+', X2='+str('%.3f'%(Xsquare)))
     clb3 = plt.colorbar(hb,ax = ax[0,2])
     clb3.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
 
@@ -893,6 +909,52 @@ def plot_test(thresh, thresh_string):
     kde_interp_func = interp1d(bin_centers, sum_normal) #mc by-hand kde
     
     kde = gaussian_kde((data_test['radial_velocity']).values) #truth kde
+    #need to randomly resample from the truth for the dumb human tests
+    random_from_kde = kde.resample(len(test_preds[:,0]))
+    random_from_kde = random_from_kde[0]
+    kde_random_samp = gaussian_kde(random_from_kde)
+    kl_div_resample = kl_div(kde.evaluate(bin_centers_test),kde_random_samp.evaluate(bin_centers_test), ((np.abs(y_low)+y_high)/50))
+    R2_resample = coeff_determination((data_test['radial_velocity']).values, random_from_kde)
+    X2_resample = chi_square((data_test['radial_velocity']).values, random_from_kde,np.ones_like(random_from_kde))
+    #also need to do test just setting v_los to 0
+    filler_array = np.zeros_like(bin_centers_test)
+    filler_array[25] = 1
+    kl_div_zero = kl_div(kde.evaluate(bin_centers_test),filler_array, ((np.abs(y_low)+y_high)/50))
+    R2_zero = coeff_determination((data_test['radial_velocity']).values, np.zeros_like(test_preds[:,0]))
+    X2_zero = chi_square((data_test['radial_velocity']).values, np.zeros_like(test_preds[:,0]),np.ones_like(test_preds[:,0]))
+    
+    with open("klresamp_list.txt", "a") as klresamp_file:
+       klresamp_file.write("\n")
+       if thresh == 0: klresamp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_resample))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    klresamp_file.close()
+    with open("r2resamp_list.txt", "a") as r2resamp_file:
+       r2resamp_file.write("\n")
+       if thresh == 0: r2resamp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(R2_resample))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    r2resamp_file.close()
+    with open("x2resamp_list.txt", "a") as x2resamp_file:
+       x2resamp_file.write("\n")
+       if thresh == 0: x2resamp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(X2_resample))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    x2resamp_file.close()
+
+    with open("klzero_list.txt", "a") as klzero_file:
+       klzero_file.write("\n")
+       if thresh == 0: klzero_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_zero))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    klzero_file.close()
+    with open("r2zero_list.txt", "a") as r2zero_file:
+       r2zero_file.write("\n")
+       if thresh == 0: r2zero_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(R2_zero))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    r2zero_file.close()
+    with open("x2zero_list.txt", "a") as x2zero_file:
+       x2zero_file.write("\n")
+       if thresh == 0: x2zero_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(X2_zero))
+       #else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+    x2zero_file.close()
+
     ax[2,1].plot(bin_centers_test,kde.evaluate(bin_centers_test),zorder = 30, color = 'green', label = 'truth kde' )
 
     ax[2,1].plot(bin_centers_test, sum_normal,label = 'pred kde',color = 'red')
@@ -903,15 +965,15 @@ def plot_test(thresh, thresh_string):
     ax[2,1].set_xlabel(r'$v_{\rm{los}}$, KL = '+str('%.5f'%(kl_divergence)))
     ax[2,1].legend(loc = "upper right",prop={'size': 10})
     if not os.path.exists('KL_list.txt'): 
-    	a_file= open("KL_list.txt", "w")
-    	a_file.write("\n")
+        a_file= open("KL_list.txt", "w")
+        a_file.write("\n")
         if thresh == 0: a_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
-    	else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+        else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
     else:
-    	with open("KL_list.txt", "a") as a_file:
-      	    a_file.write("\n")
-    	    if thresh == 0: a_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
-    	    else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+        with open("KL_list.txt", "a") as a_file:
+            a_file.write("\n")
+            if thresh == 0: a_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
+            else: a_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_divergence))
     a_file.close()
     hb_mean=ax[2,2].hexbin((data_test['radial_velocity']).values, np.zeros_like((data_test['radial_velocity']).values),gridsize=100, norm = LogNorm(),extent=[-200, 200, -200, 200])
     hb_mean.set_array(np.mean(hb_list, axis = 0))
@@ -1032,11 +1094,11 @@ rounded_quant= np.insert(rounded_quant,0,0.0)
 quant_string = np.insert(quant_string,0, '0')
 print(rounded_quant)
 print(quant_string)
-#plot_test(0,'0')
+plot_test(0,'0')
 
-for elem_i in range(len(rounded_quant)):
-    save_indices(rounded_quant[elem_i],quant_string[elem_i])
-    plot_test(rounded_quant[elem_i],quant_string[elem_i])
+#for elem_i in range(len(rounded_quant)):
+#    save_indices(rounded_quant[elem_i],quant_string[elem_i])
+#    plot_test(rounded_quant[elem_i],quant_string[elem_i])
 
 # %%
 #CombinedModel.save(folder_name+'/network.h5')
