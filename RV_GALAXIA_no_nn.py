@@ -577,6 +577,18 @@ CombinedModel.save_weights(folder_name+"/models_GALAXIA_nonn/ModelWeights.h5")
 # %%
 CombinedModel.load_weights(folder_name+'/models_GALAXIA_nonn/' + 'ModelWeights.h5')
 test_preds_2 = CombinedModel.predict(X_test)
+
+#code for the 15 deg cone cut test
+brute_force_MC_sigma = False
+cone_cut = True
+if cone_cut == True:
+    df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
+    data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
+    data_test_cone_cut['cone_cond_1'] = [x**2+y**2 for x,y in zip(data_test_cone_cut['l'],data_test_cone_cut['b'])]
+    data_test_cone_cut['cone_cond_2'] = [(x-180)**2+y**2 for x,y in zip(data_test_cone_cut['l'],data_test_cone_cut['b'])]
+    data_test_cone_cut.drop(data_test_cone_cut[(data_test_cone_cut.cone_cond_2 > 15**2) & (data_test_cone_cut.cone_cond_1 > 15**2)].index, inplace=True)
+    data_test = pd.DataFrame(data_test_cone_cut, columns=data_cols)
+    test_preds_2 = data_test_cone_cut[['mu','sigma']].to_numpy()
 y_low = -250
 y_high = 250
 #rescale test_preds_2
@@ -584,9 +596,11 @@ test_preds_2[:,0] = (test_preds_2[:,0] * stddev)+mu
 test_preds_2[:,1] = (test_preds_2[:,1] * stddev)+mu
 
 # %%
-quant = np.quantile(test_preds_2[:,1], [0.01,0.05,0.1,0.25,0.5])
+#quant = np.quantile(test_preds_2[:,1], [0.01,0.05,0.1,0.25,0.5])
 #quant = np.quantile(test_preds_2[:,1],[.01,.05])
-rounded_quant = np.round(quant,2)
+#rounded_quant = np.round(quant,2)
+quant = [5.0,10.0, 15.0, 30.0, 50.0, 70.0]
+rounded_quant = quant
 quant_string = []
 for elem_i in range(len(rounded_quant)):
     p_elem = str(rounded_quant[elem_i])
@@ -604,7 +618,7 @@ for elem_i in range(len(rounded_quant)):
 
 # %%
 def save_indices(thresh, thresh_string):
-    
+    is_elem = False
     list_err_lt = []   
     list_err_lt = [(data_test['radial_velocity']).values[i] for i in range(len(test_preds_2[:,1])) if test_preds_2[i,1] < thresh]
     print(len(list_err_lt))
@@ -614,6 +628,10 @@ def save_indices(thresh, thresh_string):
     	for i in range(len(list_err_lt)):
         	indices.append(data_test[data_test['radial_velocity']==(list_err_lt[i])].index[0])
     	np.save(folder_name+'/data_indices_error_lt_'+thresh_string,indices)
+    indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
+    if len(indices_to_drop) > 0: is_elem = True
+    else: is_elem = False
+    return is_elem
         
 
 # %%
@@ -635,6 +653,9 @@ from scipy.integrate import quad
 def monte_carlo(df, test_preds_cut, thresh, thresh_string):  
     from matplotlib.colors import LogNorm
     mc_vr_pred_list = []
+    mc_pred_list_vr = [] 
+    mc_pred_list_vth = []
+    mc_pred_list_vphi = []
     resample_test_list = []
     bin_values_list = []
     min_array = []
@@ -681,13 +702,15 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
         
         #now for the coordinate-transformed histograms
         vel_sph_coord = get_coord_transform(data_test, np.array(mc_vr_pred))
-        n_r , bins_r = np.histogram(vel_sph_coord[:,0], bins=50, range=(-250,250))
-        n_th , bins_th = np.histogram(vel_sph_coord[:,1], bins=50, range=(-250,250))
-        n_phi , bins_phi = np.histogram(vel_sph_coord[:,2], bins=50, range=(-450,0))
+        n_r , bins_r = np.histogram(vel_sph_coord[:,0], bins=50, range=(-250,250), density = True)
+        n_th , bins_th = np.histogram(vel_sph_coord[:,1], bins=50, range=(-250,250), density = True)
+        n_phi , bins_phi = np.histogram(vel_sph_coord[:,2], bins=50, range=(-450,0), density = True)
         bin_values_list_r.append(n_r)
         bin_values_list_th.append(n_th)
         bin_values_list_phi.append(n_phi)
-        
+        mc_pred_list_vr.append(vel_sph_coord[:,0])
+        mc_pred_list_vth.append(vel_sph_coord[:,1])
+        mc_pred_list_vphi.append(vel_sph_coord[:,2])
         
         hb_r = plt.hexbin((data_test['vr']).values, vel_sph_coord[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250]);
         hb_list_r.append(hb_r.get_array());
@@ -708,17 +731,26 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
     
     bin_values_list_r_arr = np.array(bin_values_list_r)    
     max_array_r = bin_values_list_r_arr.max(axis=0)
-    min_array_r = bin_values_list_r_arr.min(axis=0) 
-    
+    median_array_r = np.median(bin_values_list_r_arr,axis=0)
+    min_array_r = bin_values_list_r_arr.min(axis=0)
+    error_vr_MC = np.std(mc_pred_list_vr, axis = 0) 
+    print('error_vr_MC ',error_vr_MC[0:50])
+ 
     bin_values_list_th_arr = np.array(bin_values_list_th)    
     max_array_th = bin_values_list_th_arr.max(axis=0)
-    min_array_th = bin_values_list_th_arr.min(axis=0) 
+    median_array_th = np.median(bin_values_list_th_arr,axis=0)
+    min_array_th = bin_values_list_th_arr.min(axis=0)
+    error_vth_MC = np.std(mc_pred_list_vth, axis = 0)
+    print('error_vth_MC ',error_vth_MC[0:50])
     
     bin_values_list_phi_arr = np.array(bin_values_list_phi)    
     max_array_phi = bin_values_list_phi_arr.max(axis=0)
-    min_array_phi = bin_values_list_phi_arr.min(axis=0) 
+    median_array_phi = np.median(bin_values_list_phi_arr,axis=0)
+    min_array_phi = bin_values_list_phi_arr.min(axis=0)
+    error_vphi_MC = np.std(mc_pred_list_vphi, axis = 0) 
+    print('error_vphi_MC ',error_vphi_MC[0:50])
 
-    return vel_sph_coord, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list
+    return vel_sph_coord, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list, median_array_r, median_array_th, median_array_phi, error_vr_MC, error_vth_MC,error_vphi_MC
 
 
 # %%
@@ -771,6 +803,13 @@ def reload_data_per_cut(thresh, thresh_string):
                  'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
                  'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
     data_test = pd.DataFrame(data_test, columns=data_cols)
+    if cone_cut == True:
+        df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
+        data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
+        data_test_cone_cut['cone_cond_1'] = [x**2+y**2 for x,y in zip(data_test_cone_cut['l'],data_test_cone_cut['b'])]
+        data_test_cone_cut['cone_cond_2'] = [(x-180)**2+y**2 for x,y in zip(data_test_cone_cut['l'],data_test_cone_cut['b'])]
+        data_test_cone_cut.drop(data_test_cone_cut[(data_test_cone_cut.cone_cond_2 > 15**2) & (data_test_cone_cut.cone_cond_1 > 15**2)].index, inplace=True)
+        data_test = pd.DataFrame(data_test_cone_cut, columns=data_cols)
     indices_to_drop = []
     if thresh < 80 and thresh > 0:
         indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
@@ -792,6 +831,10 @@ def gaussian(x,mu,sigma):
 def chi_square(y_true, y_pred,sigma):
     chi_sq = sum((y_true-y_pred)*(y_true-y_pred)*(1/(sigma*sigma)))*(1/(len(y_true)-1))
     return chi_sq
+def coeff_determination(y_true, y_pred):
+    SS_res =  sum(np.square( y_true-y_pred ))
+    SS_tot = sum(np.square( y_true - np.mean(y_true) ) )
+    return ( 1 - (SS_res/SS_tot))
 def plot_test(thresh, thresh_string):
     data_test = reload_data_per_cut(thresh, thresh_string)
     print('shape of data_test is '+str(data_test.shape))
@@ -812,12 +855,9 @@ def plot_test(thresh, thresh_string):
     ax[1,0].set_ylabel(r'$v_{\rm{los}}^{\rm{pred}}$',labelpad=-10)
     ax[1,0].set_xlabel('$\sigma$',labelpad=-5)
     
-    def coeff_determination(y_true, y_pred):
-        SS_res =  sum(np.square( y_true-y_pred ))
-        SS_tot = sum(np.square( y_true - np.mean(y_true) ) )
-        return ( 1 - (SS_res/SS_tot)) 
     Rsquare = coeff_determination((data_test['radial_velocity']).values, test_preds[:,0])
     txt =('input vars = '+ str(use_cols)+ ', '+neurons+' '+num_samp+' '+act_func+' '+dropout+' '+lweights+' '+spec)
+    if cone_cut == True: txt = txt + ' 15 deg cone'
     if not os.path.exists('Rsquare_list.txt'):
         r_file= open("Rsquare_list.txt", "w")
         r_file.write("\n")
@@ -896,8 +936,33 @@ def plot_test(thresh, thresh_string):
     
     hist_test, bins_test, patches_test = ax[2,1].hist((data_test['radial_velocity']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5, fill = True, label = 'test' , density = True, zorder = 0)
     bin_centers_test = (bins_test[1:]+bins_test[:-1])/2
-    vels_sph_pred_test, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list= monte_carlo(data_test, test_preds, thresh, thresh_string);
+    vels_sph_coord, min_array, max_array,median_array, hb_list, hb_list_r,hb_list_th,hb_list_phi, min_array_r,max_array_r,min_array_th,max_array_th, min_array_phi,max_array_phi, mc_vr_pred_list,cdf_mc_list, median_array_r, median_array_th, median_array_phi,error_vr_MC,error_vth_MC,error_vphi_MC= monte_carlo(data_test, test_preds, thresh, thresh_string);
+    
     ax[2,1].fill_between(bin_centers_test,min_array, max_array,label = 'MC spread',color = 'orange', zorder = 10, alpha = 0.5)
+    vels_sph_pred_test = get_coord_transform(data_test, test_preds[:,0])
+
+    ##### Going to calculate the error in galactocentric spherical coordinates using the matrix transformations####
+    sigma_vr, sigma_vth, sigma_vphi, vr_hl, vth_hl, vphi_hl = TransformCoords.error_toGalcen_sph(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.deg2rad(90-data_test['theta'].values),np.deg2rad(data_test['phi'].values),test_preds[:,1], test_preds[:,0], data_test['pmra'].values, data_test['pmdec'].values)
+    print('sigma_vr ',sigma_vr[0:50])
+    print('sigma_vth ',sigma_vth[0:50])
+    print('sigma_vphi ',sigma_vphi[0:50])
+    print('vr_hl ',vr_hl[0:50])
+    print('vth_hl ',vth_hl[0:50])
+    print('vphi_hl ',vphi_hl[0:50])
+    print('vr_lc ',vels_sph_pred_test[0:50,0])
+    print('vth_lc ',vels_sph_pred_test[0:50,1])
+    print('vphi_lc ',vels_sph_pred_test[0:50,2])
+    print('ra ',data_test['ra'].values[0:10])
+    print('dec ',data_test['dec'].values[0:10])
+    print('pmra ',data_test['pmra'].values[0:10])
+    print('pmdec ',data_test['pmdec'].values[0:10])
+    print('parallax ',data_test['parallax'].values[0:10])
+    print('l ',data_test['l'].values[0:10])
+    print('b ',data_test['b'].values[0:10])
+    print('90-theta ',90-data_test['theta'].values[0:10])
+    print('phi ',data_test['phi'].values[0:10])
+    print('sigma_los ',test_preds[0:10,1])
+    print('pred_vlos ',test_preds[0:10,0])
     #need to calculate MC kde by hand
     vbins = np.linspace(y_low,y_high,51)
     bin_centers = (vbins[1:]+vbins[:-1])/2
@@ -986,55 +1051,272 @@ def plot_test(thresh, thresh_string):
     clb6 = plt.colorbar(hb_mean,ax = ax[2,2])
     clb6.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
     
-    #'vr','vphi','vtheta'
+    ################################
+    ##### 'vr','vphi','vtheta' #####
+    ################################
+    #going to get the coord transform of v_los = 0
+    vels_sph_coord_vlos0 = get_coord_transform(data_test,np.zeros_like(test_preds[:,0]))
     hb_r = ax[3,0].hexbin((data_test['vr']).values, vels_sph_pred_test[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250],rasterized=True)
+    Rsquare_vr = coeff_determination((data_test['vr']).values, vels_sph_pred_test[:,0])
+    if brute_force_MC_sigma == True: Xsquare_vr = chi_square((data_test['vr']).values, vels_sph_pred_test[:,0],error_vr_MC)
+    if brute_force_MC_sigma == False: Xsquare_vr = chi_square((data_test['vr']).values, vels_sph_pred_test[:,0],sigma_vr)
     x1 = np.linspace(-250,250,1000)
     y1 = x1
     ax[3,0].plot(x1,y1,'k--')
     ax[3,0].set_ylabel(r'$v_{\rm{r}}^{\rm{pred}}$',labelpad=-10)
-    ax[3,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$')
+    ax[3,0].set_xlabel(r'$v_{\rm{r}}^{\rm{meas}}$ R2='+str('%.3f'%(Rsquare_vr))+', X2='+str('%.3f'%(Xsquare_vr)))
     clb7 = plt.colorbar(hb_r, ax = ax[3,0])
     clb7.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-    
+    if not os.path.exists('Rsquare_list_vr.txt'):
+        rvr_file= open("Rsquare_list_vr.txt", "w")
+        rvr_file.write("\n")
+        if thresh == 0: rvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vr))
+        else: rvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vr))
+    else:
+        with open("Rsquare_list_vr.txt", "a") as rvr_file:
+            rvr_file.write("\n")
+            if thresh == 0: rvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vr))
+            else: rvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vr))
+    rvr_file.close()
+    if not os.path.exists('Xsquare_list_vr.txt'):
+        xvr_file= open("Xsquare_list_vr.txt", "w")
+        xvr_file.write("\n")
+        if thresh == 0: xvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vr))
+        else: xvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vr))
+    else:
+        with open("Xsquare_list_vr.txt", "a") as xvr_file:
+            xvr_file.write("\n")
+            if thresh == 0: xvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vr))
+            else: xvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vr))
+    xvr_file.close()
+
     hb_t = ax[3,1].hexbin((data_test['vtheta']).values, vels_sph_pred_test[:,1],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
+    Rsquare_vth = coeff_determination((data_test['vtheta']).values, vels_sph_pred_test[:,1])
+    if brute_force_MC_sigma == True: Xsquare_vth = chi_square((data_test['vtheta']).values, vels_sph_pred_test[:,1], error_vth_MC)
+    if brute_force_MC_sigma == False: Xsquare_vth = chi_square((data_test['vtheta']).values, vels_sph_pred_test[:,1], sigma_vth)
     x2 = np.linspace(-250,250,1000)
     y2 = x2
     ax[3,1].plot(x2,y2,'k--')
     ax[3,1].set_ylabel(r'$v_{\rm{\theta}}^{\rm{pred}}$',labelpad=-10)
-    ax[3,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$')
+    ax[3,1].set_xlabel(r'$v_{\rm{\theta}}^{\rm{meas}}$ R2='+str('%.3f'%(Rsquare_vth))+', X2='+str('%.3f'%(Xsquare_vth)))
     clb8 = plt.colorbar(hb_t,ax = ax[3,1])
     clb8.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-    
+    if not os.path.exists('Rsquare_list_vth.txt'):
+        rvt_file= open("Rsquare_list_vth.txt", "w")
+        rvt_file.write("\n")
+        if thresh == 0: rvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vth))
+        else: rvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vth))
+    else:
+        with open("Rsquare_list_vth.txt", "a") as rvt_file:
+            rvt_file.write("\n")
+            if thresh == 0: rvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vth))
+            else: rvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vth))
+    rvt_file.close()
+    if not os.path.exists('Xsquare_list_vth.txt'):
+        xvt_file= open("Xsquare_list_vth.txt", "w")
+        xvt_file.write("\n")
+        if thresh == 0: xvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vth))
+        else: xvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vth))
+    else:
+        with open("Xsquare_list_vth.txt", "a") as xvt_file:
+            xvt_file.write("\n")
+            if thresh == 0: xvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vth))
+            else: xvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vth))
+    xvt_file.close()
+
     hb_p= ax[3,2].hexbin((data_test['vphi']).values, vels_sph_pred_test[:,2],gridsize=100, norm = LogNorm(),extent=[-450, 0, -450, 0])
+    Rsquare_vphi = coeff_determination((data_test['vphi']).values, vels_sph_pred_test[:,2])
+    if brute_force_MC_sigma == True: Xsquare_vphi = chi_square((data_test['vphi']).values, vels_sph_pred_test[:,2], error_vphi_MC)
+    if brute_force_MC_sigma == False: Xsquare_vphi = chi_square((data_test['vphi']).values, vels_sph_pred_test[:,2], sigma_vphi)
     x3 = np.linspace(-450,0,1000)
     y3 = x3
     ax[3,2].plot(x3,y3,'k--')
     ax[3,2].set_ylabel(r'$v_{\rm{\phi}}^{\rm{pred}}$',labelpad=-5)
-    ax[3,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$')
+    ax[3,2].set_xlabel(r'$v_{\rm{\phi}}^{\rm{meas}}$ R2='+str('%.3f'%(Rsquare_vphi))+', X2='+str('%.3f'%(Xsquare_vphi)))
     clb9 = plt.colorbar(hb_p, ax = ax[3,2])
     clb9.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
-    
-    hist_test_r, bins_test_r, patches_test_r = ax[4,0].hist((data_test['vr']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True,  label = 'test' )
+    if not os.path.exists('Rsquare_list_vphi.txt'):
+        rvp_file= open("Rsquare_list_vphi.txt", "w")
+        rvp_file.write("\n")
+        if thresh == 0: rvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vphi))
+        else: rvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vphi))
+    else:
+        with open("Rsquare_list_vphi.txt", "a") as rvp_file:
+            rvp_file.write("\n")
+            if thresh == 0: rvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vphi))
+            else: rvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' R2 = '+str(Rsquare_vphi))
+    rvp_file.close()
+    if not os.path.exists('Xsquare_list_vphi.txt'):
+        xvp_file= open("Xsquare_list_vphi.txt", "w")
+        xvp_file.write("\n")
+        if thresh == 0: xvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vphi))
+        else: xvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vphi))
+    else:
+        with open("Xsquare_list_vphi.txt", "a") as xvp_file:
+            xvp_file.write("\n")
+            if thresh == 0: xvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vphi))
+            else: xvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' X2 = '+str(Xsquare_vphi))
+    xvp_file.close()
+
+    #######################################
+    ##### histograms vr, vtheta, vphi #####
+    #######################################
+    hist_test_r, bins_test_r, patches_test_r = ax[4,0].hist((data_test['vr']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True,  label = 'test', zorder = 0, density = True )
     bin_centers_test_r = (bins_test_r[1:]+bins_test_r[:-1])/2
-    ax[4,0].fill_between(bin_centers_test_r,min_array_r, max_array_r,label = 'MC spread',color = 'orange',alpha = 0.5)
-    ax[4,0].hist(vels_sph_pred_test[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted')
-    ax[4,0].set_xlabel(r'$v_{\rm{r}}$', labelpad =-2)
+    ax[4,0].fill_between(bin_centers_test_r,min_array_r, max_array_r,label = 'MC spread',color = 'orange',alpha = 0.5, zorder = 10)
+    ax[4,0].hist(vels_sph_pred_test[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted', zorder = 20, density = True)
+    ax[4,0].hist(vels_sph_coord_vlos0[:,0], bins=50, range=(y_low,y_high), histtype='step',color = 'magenta', linewidth = 1.3,label = 'vlos = 0', zorder = 30, density = True)
+    kde_vr = gaussian_kde((data_test['vr']).values)
+
+    #need to calculate MC kde by hand for calculated sigma
+    bin_width_r = bin_centers_test_r[1]-bin_centers_test_r[0]
+    normals_vr_pred = np.array([gaussian(bin_centers_test_r,vels_sph_pred_test[i,0],sigma_vr[i]) for i in range(len(vels_sph_pred_test[:,0]))])
+    sum_normal_vr_pred = np.sum(normals_vr_pred,axis=0)
+    sum_normal_vr_pred = sum_normal_vr_pred/np.sum(sum_normal_vr_pred*bin_width_r)
+
+    kde_vr_vlos0 = gaussian_kde(vels_sph_coord_vlos0[:,0])
+
+    median_array_r = [1e-8 if x==0.0 else x for x in median_array_r]
+    if brute_force_MC_sigma == True: kl_div_vr_p = kl_div(kde_vr.evaluate(bin_centers_test_r),median_array_r, ((np.abs(y_low)+y_high)/50))
+    if brute_force_MC_sigma == False: kl_div_vr_p = kl_div(kde_vr.evaluate(bin_centers_test_r),sum_normal_vr_pred, ((np.abs(y_low)+y_high)/50))
+    #print(kde_vr.evaluate(bin_centers_test_r))
+    #print(median_array_r)
+    eval_0_kde_r = kde_vr_vlos0.evaluate(bin_centers_test_r)
+    eval_0_kde_r = [1e-8 if x==0.0 else x for x in eval_0_kde_r]
+    kl_div_vr_0 = kl_div(kde_vr.evaluate(bin_centers_test_r),eval_0_kde_r, ((np.abs(y_low)+y_high)/50))
+    ax[4,0].plot(bin_centers_test_r,kde_vr.evaluate(bin_centers_test_r),color = 'green', label = 'truth kde', zorder = 40 )
+    if brute_force_MC_sigma == True: ax[4,0].plot(bin_centers_test_r,median_array_r ,color = 'blue', label = 'med MC', zorder = 50 )
+    if brute_force_MC_sigma == False:ax[4,0].plot(bin_centers_test_r,sum_normal_vr_pred ,color = 'blue', label = 'pred MC', zorder = 50 )
+    ax[4,0].plot(bin_centers_test_r,kde_vr_vlos0.evaluate(bin_centers_test_r) ,label = 'vlos=0 kde',color = 'red', zorder = 60)
+    ax[4,0].set_xlabel(r'$v_{\rm{r}}$, KLtp='+str('%.3f'%(kl_div_vr_p))+', KLt0='+str('%.3f'%(kl_div_vr_0)), labelpad =-2)
     ax[4,0].legend(loc = "upper right",prop={'size': 10})
-    
-    hist_test_th, bins_test_th, patches_test_th = ax[4,1].hist((data_test['vtheta']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5,fill = True, label = 'test', zorder = 0)
+    if not os.path.exists('KL_list_vr.txt'):
+        klvr_file= open("KL_list_vr.txt", "w")
+        klvr_file.write("\n")
+        if thresh == 0: klvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_p))
+        else: klvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_p))
+    else:
+        with open("KL_list_vr.txt", "a") as klvr_file:
+            klvr_file.write("\n")
+            if thresh == 0: klvr_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_p))
+            else: klvr_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_p))
+    klvr_file.close()
+
+    if not os.path.exists('KL_list_vr0.txt'):
+        klvr0_file= open("KL_list_vr0.txt", "w")
+        klvr0_file.write("\n")
+        if thresh == 0: klvr0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_0))
+        else: klvr0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_0))
+    else:
+        with open("KL_list_vr0.txt", "a") as klvr0_file:
+            klvr0_file.write("\n")
+            if thresh == 0: klvr0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_0))
+            else: klvr0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vr_0))
+    klvr0_file.close()
+
+    hist_test_th, bins_test_th, patches_test_th = ax[4,1].hist((data_test['vtheta']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5,fill = True, label = 'test', zorder = 0, density = True)
     bin_centers_test_th = (bins_test_th[1:]+bins_test_th[:-1])/2
     ax[4,1].fill_between(bin_centers_test_th,min_array_th, max_array_th,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
-    ax[4,1].hist(vels_sph_pred_test[:,1], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'predicted', zorder = 20)
-    ax[4,1].set_xlabel(r'$v_{\rm{\theta}}$', labelpad =-2)
+    ax[4,1].hist(vels_sph_pred_test[:,1], bins=50, range=(y_low,y_high), histtype='step',color = 'darkslateblue',linewidth = 1.3, label = 'predicted', zorder = 20, density = True)
+    ax[4,1].hist(vels_sph_coord_vlos0[:,1], bins=50, range=(y_low,y_high), histtype='step',color = 'magenta', linewidth = 1.3,label = 'vlos = 0', zorder = 30, density = True)
+    kde_vth = gaussian_kde((data_test['vtheta']).values)
+
+    #need to calculate MC kde by hand
+    bin_width_th = bin_centers_test_th[1]-bin_centers_test_th[0]
+    normals_vth_pred = np.array([gaussian(bin_centers_test_th,vels_sph_pred_test[i,1],sigma_vth[i]) for i in range(len(vels_sph_pred_test[:,1]))])
+    sum_normal_vth_pred = np.sum(normals_vth_pred,axis=0)
+    sum_normal_vth_pred = sum_normal_vth_pred/np.sum(sum_normal_vth_pred*bin_width_th)
+
+    kde_vth_vlos0 = gaussian_kde(vels_sph_coord_vlos0[:,1])
+    median_array_th = [1e-8 if x==0.0 else x for x in median_array_th]
+    if brute_force_MC_sigma == True: kl_div_vth_p = kl_div(kde_vth.evaluate(bin_centers_test_th),median_array_th, ((np.abs(y_low)+y_high)/50))
+    if brute_force_MC_sigma == False: kl_div_vth_p = kl_div(kde_vth.evaluate(bin_centers_test_th),sum_normal_vth_pred, ((np.abs(y_low)+y_high)/50))
+    eval_0_kde_th = kde_vth_vlos0.evaluate(bin_centers_test_th)
+    eval_0_kde_th = [1e-8 if x==0.0 else x for x in eval_0_kde_th]
+    kl_div_vth_0 = kl_div(kde_vth.evaluate(bin_centers_test_th),eval_0_kde_th, ((np.abs(y_low)+y_high)/50))
+    ax[4,1].plot(bin_centers_test_th,kde_vth.evaluate(bin_centers_test_th),color = 'green', label = 'truth kde', zorder = 40 )
+    if brute_force_MC_sigma == True: ax[4,1].plot(bin_centers_test_th,median_array_th ,color = 'blue', label = 'med MC', zorder = 50 )
+    if brute_force_MC_sigma == False: ax[4,1].plot(bin_centers_test_th,sum_normal_vth_pred ,color = 'blue', label = 'pred MC', zorder = 50 )
+    ax[4,1].plot(bin_centers_test_th,kde_vth_vlos0.evaluate(bin_centers_test_th) ,label = 'vlos=0 kde',color = 'red', zorder = 60)
+    ax[4,1].set_xlabel(r'$v_{\rm{\theta}}$, KLtp='+str('%.3f'%(kl_div_vth_p))+', KLt0='+str('%.3f'%(kl_div_vth_0)), labelpad =-2)
     ax[4,1].legend(loc = "upper right",prop={'size': 10})
-    
-    hist_test_phi, bins_test_phi, patches_test_phi = ax[4,2].hist((data_test['vphi']).values, bins=50, range=(-450,0), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5,fill = True,  label = 'test', zorder = 0)
+    if not os.path.exists('KL_list_vth.txt'):
+        klvt_file= open("KL_list_vth.txt", "w")
+        klvt_file.write("\n")
+        if thresh == 0: klvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_p))
+        else: klvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_p))
+    else:
+        with open("KL_list_vth.txt", "a") as klvt_file:
+            klvt_file.write("\n")
+            if thresh == 0: klvt_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_p))
+            else: klvt_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_p))
+    klvt_file.close()
+
+    if not os.path.exists('KL_list_vth0.txt'):
+        klvt0_file= open("KL_list_vth0.txt", "w")
+        klvt0_file.write("\n")
+        if thresh == 0: klvt0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_0))
+        else: klvt0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_0))
+    else:
+        with open("KL_list_vth0.txt", "a") as klvt0_file:
+            klvt0_file.write("\n")
+            if thresh == 0: klvt0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_0))
+            else: klvt0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vth_0))
+    klvt0_file.close()    
+
+
+    hist_test_phi, bins_test_phi, patches_test_phi = ax[4,2].hist((data_test['vphi']).values, bins=50, range=(-450,0), histtype='bar', edgecolor = 'white', color= 'tab:blue', alpha = 0.5,fill = True,  label = 'test', zorder = 0, density = True)
     bin_centers_test_phi = (bins_test_phi[1:]+bins_test_phi[:-1])/2
     ax[4,2].fill_between(bin_centers_test_phi,min_array_phi, max_array_phi,label = 'MC spread',color = 'orange', alpha = 0.5, zorder = 10)
-    ax[4,2].hist(vels_sph_pred_test[:,2], bins=50, range=(-450,0), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted', zorder = 20)
-    ax[4,2].set_xlabel(r'$v_{\rm{\phi}}$', labelpad =-2)
+    ax[4,2].hist(vels_sph_pred_test[:,2], bins=50, range=(-450,0), histtype='step',color = 'darkslateblue', linewidth = 1.3,label = 'predicted', zorder = 20, density = True)
+    ax[4,2].hist(vels_sph_coord_vlos0[:,2], bins=50, range=(y_low,y_high), histtype='step',color = 'magenta', linewidth = 1.3,label = 'vlos = 0', zorder = 30, density = True)
+    kde_vphi = gaussian_kde((data_test['vphi']).values)
+
+    #need to calculate MC kde by hand
+    bin_width_phi = bin_centers_test_phi[1]-bin_centers_test_phi[0]
+    normals_vphi_pred = np.array([gaussian(bin_centers_test_phi,vels_sph_pred_test[i,2],sigma_vphi[i]) for i in range(len(vels_sph_pred_test[:,2]))])
+    sum_normal_vphi_pred = np.sum(normals_vphi_pred,axis=0)
+    sum_normal_vphi_pred = sum_normal_vphi_pred/np.sum(sum_normal_vphi_pred*bin_width_phi)
+
+    kde_vphi_vlos0 = gaussian_kde(vels_sph_coord_vlos0[:,2])
+    median_array_phi = [1e-8 if x==0.0 else x for x in median_array_phi]
+    if brute_force_MC_sigma == True: kl_div_vphi_p = kl_div(kde_vphi.evaluate(bin_centers_test_phi),median_array_phi, ((np.abs(y_low)+y_high)/50))
+    if brute_force_MC_sigma == False: kl_div_vphi_p = kl_div(kde_vphi.evaluate(bin_centers_test_phi),sum_normal_vphi_pred, ((np.abs(y_low)+y_high)/50))
+
+    eval_0_kde_phi = kde_vphi_vlos0.evaluate(bin_centers_test_phi)
+    eval_0_kde_phi = [1e-8 if x==0.0 else x for x in eval_0_kde_phi]
+    kl_div_vphi_0 = kl_div(kde_vphi.evaluate(bin_centers_test_phi),eval_0_kde_phi, ((np.abs(y_low)+y_high)/50))
+    ax[4,2].plot(bin_centers_test_phi,kde_vphi.evaluate(bin_centers_test_phi),color = 'green', label = 'truth kde', zorder = 40 )
+    if brute_force_MC_sigma == True: ax[4,2].plot(bin_centers_test_phi,median_array_phi ,color = 'blue', label = 'med MC', zorder = 50 )
+    if brute_force_MC_sigma == False: ax[4,2].plot(bin_centers_test_phi,sum_normal_vphi_pred ,color = 'blue', label = 'pred MC', zorder = 50 )
+    ax[4,2].plot(bin_centers_test_phi,kde_vphi_vlos0.evaluate(bin_centers_test_phi) ,label = 'vlos=0 kde',color = 'red', zorder = 60)
+    ax[4,2].set_xlabel(r'$v_{\rm{\phi}}$, KLtp='+str('%.3f'%(kl_div_vphi_p))+', KLt0='+str('%.3f'%(kl_div_vphi_0)), labelpad =-2)
     ax[4,2].legend(loc = "upper right",prop={'size': 10})
-    
+    if not os.path.exists('KL_list_vphi.txt'):
+        klvp_file= open("KL_list_vphi.txt", "w")
+        klvp_file.write("\n")
+        if thresh == 0: klvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_p))
+        else: klvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_p))
+    else:
+        with open("KL_list_vphi.txt", "a") as klvp_file:
+            klvp_file.write("\n")
+            if thresh == 0: klvp_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_p))
+            else: klvp_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_p))
+    klvp_file.close()
+
+    if not os.path.exists('KL_list_vphi0.txt'):
+        klvp0_file= open("KL_list_vphi0.txt", "w")
+        klvp0_file.write("\n")
+        if thresh == 0: klvp0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_0))
+        else: klvp0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_0))
+    else:
+        with open("KL_list_vphi0.txt", "a") as klvp0_file:
+            klvp0_file.write("\n")
+            if thresh == 0: klvp0_file.write(txt + ' sigmaleq '+str(np.max(test_preds[:,1]))+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_0))
+            else: klvp0_file.write(txt + ' sigmaleq '+str(thresh)+ ', '+str(len(data_test['radial_velocity'].values))+' stars,'+' KL = '+str(kl_div_vphi_0))
+    klvp0_file.close()   
+
+
     hb_mean_r=ax[5,0].hexbin((data_test['vr']).values, np.zeros_like((data_test['vr']).values), gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250])
     hb_mean_r.set_array(np.mean(hb_list_r, axis = 0))
     x1 = np.linspace(-250,250,1000)
@@ -1069,6 +1351,7 @@ def plot_test(thresh, thresh_string):
     clb12.set_label('Density', labelpad=-25, y=1.08, rotation=0,fontsize=10)
    
     txt =('input vars = '+ str(use_cols)+ ', '+neurons+' '+num_samp+' '+act_func+' '+dropout+' '+lweights+' '+spec)
+    if cone_cut == True: txt = txt + ' 15 deg cone'
     fig.suptitle(txt)
 
 
@@ -1092,12 +1375,14 @@ def plot_test(thresh, thresh_string):
 #if not os.path.exists(folder_name+'/'+filename+'_withKL_sigmaleq_0.png'):
 rounded_quant= np.insert(rounded_quant,0,0.0)
 quant_string = np.insert(quant_string,0, '0')
-print(rounded_quant)
-print(quant_string)
+#print(rounded_quant)
+#print(quant_string)
 plot_test(0,'0')
 
 #for elem_i in range(len(rounded_quant)):
-#    save_indices(rounded_quant[elem_i],quant_string[elem_i])
+#    elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
+#    #note here it won't calculate the overall because it doesn not save the np file with leq0
+#    if elements == False: continue 
 #    plot_test(rounded_quant[elem_i],quant_string[elem_i])
 
 # %%
