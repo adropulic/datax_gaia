@@ -614,13 +614,13 @@ def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, do
 		M = np.matmul(np.matmul(np.matmul(np.matmul(mat_1,mat_2),mat_sol),mat_3),mat_4)
 		COV_VRTP = np.matmul(np.matmul(M,P),np.matmul(COV_VLOSAD,np.matmul(np.transpose(P),np.transpose(M))))
 		COV_VR[i] = np.sqrt(COV_VRTP[0,0])
-		COV_VTHETA[i] = np.sqrt(COV_VRTP[1,1])
-		COV_VPHI[i] = np.sqrt(COV_VRTP[2,2])
+		COV_VTHETA[i] = np.sqrt(COV_VRTP[2,2])
+		COV_VPHI[i] = np.sqrt(COV_VRTP[1,1])
 		
-		coords_cart = np.array([ddot[i], pmra[i]*(1/parallax[i])*cos(dec[i])*fact, pmdec[i]*(1/parallax[i])*fact])
+		coords_cart = np.array([ddot[i], pmra[i]*(1/parallax[i])*fact, pmdec[i]*(1/parallax[i])*fact])
 		coords_sph = np.matmul(np.matmul(M,P), coords_cart) + np.matmul(np.matmul(mat_1, mat_2), solar_corr)
 		vr[i] = coords_sph[0]
-		vtheta[i] = coords_sph[1]
-		vphi[i] = coords_sph[2]
+		vtheta[i] = coords_sph[2]
+		vphi[i] = coords_sph[1]
 		
 	return COV_VR, COV_VTHETA, COV_VPHI,vr, vtheta, vphi
