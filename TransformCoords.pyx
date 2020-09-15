@@ -561,7 +561,7 @@ def error_toGalcen(double[:] ra, double[:] dec, double[:] parallax, double[:] pm
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, double[:] parallax, double[:] theta, double[:] phi, float[:] sigma):
+def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, double[:] parallax, double[:] theta, double[:] phi, float[:] sigma, float[:] ddot, double[:] pmra, double[:] pmdec):
 	"""
 	Propagates network error to galactocentric spherical coordinates
 	"""
@@ -571,7 +571,10 @@ def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, do
 	cdef np.ndarray[double, ndim=1 , mode='c'] solar_corr = np.array([11.1, 239.08, 7.25])
 	cdef double galcen_distance = 8.0004 # in kpc
 	cdef double z_sun = 0.015 # in kpc
-        
+	cdef double mas_per_rad = 2.062648062471e8
+	cdef double s_per_year = 31557600
+	cdef double km_per_kpc = 3.08567758e16        
+
 	cdef np.ndarray[double, ndim=2, mode='c'] P = np.empty((3,3),dtype=np.float)
 	cdef np.ndarray[double, ndim=2, mode='c'] mat_1 = np.empty((3,3),dtype=np.float)
 	cdef np.ndarray[double, ndim=2, mode='c'] mat_2 = np.empty((3,3),dtype=np.float)
@@ -586,6 +589,13 @@ def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, do
 	cdef np.ndarray[double, ndim=1, mode='c'] COV_VTHETA = np.empty(nstars,dtype=np.float)
 	cdef np.ndarray[double, ndim=1, mode='c'] COV_VPHI = np.empty(nstars,dtype=np.float)
 
+	cdef np.ndarray[double, ndim=1, mode='c'] coords_sph = np.empty(3,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] coords_cart = np.empty(3,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] vr  = np.empty(nstars,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] vtheta  = np.empty(nstars,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] vphi  = np.empty(nstars,dtype=np.float)
+	cdef double fact = km_per_kpc / mas_per_rad /s_per_year
+
 	cdef double sin_theta_sol = z_sun/galcen_distance
 	cdef double cos_theta_sol = np.sqrt(1. - sin_theta_sol**2)
 	cdef np.ndarray[double, ndim=2, mode='c'] mat_sol = np.array([[ cos_theta_sol, 0, sin_theta_sol],[0,1,0],[-sin_theta_sol, 0, cos_theta_sol]])
@@ -596,14 +606,21 @@ def error_toGalcen_sph(double[:] ra, double[:] dec, double[:] b, double[:] l, do
 		cos_phi_conv = (sin(delta_NGP) - sin(dec[i]) * sin(b[i])) / (cos(dec[i]) * cos(b[i]))
 		sin_phi_conv = sin(ra[i] - alpha_NGP) * cos(delta_NGP) / cos(b[i])
 		P = np.array([[1,0,0],[0,cos_phi_conv, sin_phi_conv],[0,-sin_phi_conv, cos_phi_conv]])
-		mat_1 = np.array([[cos(phi[i]), 0, sin(phi[i])],[0,1,0],[-sin(phi[i]), 0, cos(phi[i])]])
-		mat_2 = np.array([[cos(theta[i]), sin(theta[i]), 0],[-sin(theta[i]), cos(theta[i]), 0],[0,0,1]])
+		mat_1 = np.array([[cos(theta[i]), 0, sin(theta[i])],[0,1,0],[-sin(theta[i]), 0, cos(theta[i])]])
+		mat_2 = np.array([[cos(phi[i]), sin(phi[i]), 0],[-sin(phi[i]), cos(phi[i]), 0],[0,0,1]])
 		mat_3 = np.array([[cos(l[i]), -sin(l[i]), 0], [sin(l[i]),  cos(l[i]), 0],[0,0,1]])
 		mat_4 = np.array([[cos(b[i]), 0, -sin(b[i])], [0,1,0],[sin(b[i]), 0, cos(b[i])]])
         
 		M = np.matmul(np.matmul(np.matmul(np.matmul(mat_1,mat_2),mat_sol),mat_3),mat_4)
 		COV_VRTP = np.matmul(np.matmul(M,P),np.matmul(COV_VLOSAD,np.matmul(np.transpose(P),np.transpose(M))))
-		COV_VR[i] = COV_VRTP[0,0]
-		COV_VTHETA[i] = COV_VRTP[1,1]
-		COV_VPHI[i] = COV_VRTP[2,2]
-	return COV_VR, COV_VTHETA, COV_VPHI
+		COV_VR[i] = np.sqrt(COV_VRTP[0,0])
+		COV_VTHETA[i] = np.sqrt(COV_VRTP[1,1])
+		COV_VPHI[i] = np.sqrt(COV_VRTP[2,2])
+		
+		coords_cart = np.array([ddot[i], pmra[i]*(1/parallax[i])*cos(dec[i])*fact, pmdec[i]*(1/parallax[i])*fact])
+		coords_sph = np.matmul(np.matmul(M,P), coords_cart) + np.matmul(np.matmul(mat_1, mat_2), solar_corr)
+		vr[i] = coords_sph[0]
+		vtheta[i] = coords_sph[1]
+		vphi[i] = coords_sph[2]
+		
+	return COV_VR, COV_VTHETA, COV_VPHI,vr, vtheta, vphi
