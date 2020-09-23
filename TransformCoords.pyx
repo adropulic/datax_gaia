@@ -741,7 +741,13 @@ def calc_theta_phi(double[:] ra, double[:] dec, double[:] b, double[:] l, double
 		RA_dec_vec = np.array([(1/parallax[i])*np.cos(ra[i])*np.cos(dec[i]),(1/parallax[i])* np.sin(ra[i])*np.cos(dec[i]),(1/parallax[i])* np.sin(dec[i])])
 		galactocen_vec = np.matmul(np.matmul(mat_sol,T), RA_dec_vec)+ R_sun
 		sin_theta[i] = galactocen_vec[2]/r[i]
-		cos_phi[i] = galactocen_vec[0]/(np.sqrt(1-(galactocen_vec[2]/r[i])*(galactocen_vec[2]/r[i]))*r[i])
-		sin_phi[i] = galactocen_vec[1]/(np.sqrt(1-(galactocen_vec[2]/r[i])*(galactocen_vec[2]/r[i]))*r[i])
-		cos_theta[i] = np.sqrt(1-(galactocen_vec[2]/r[i])*(galactocen_vec[2]/r[i]))
+		if (sin_theta[i] > 1) or (sin_theta[i] < -1): print('sin_theta: ',sin_theta[i])
+		cos_theta[i] = np.cos(np.arcsin(sin_theta[i]))
+		#cos_phi[i] = galactocen_vec[0]/(np.sqrt(1-(galactocen_vec[2]/r[i])*(galactocen_vec[2]/r[i]))*r[i])
+		cos_phi[i] = galactocen_vec[0]/(cos_theta[i]*r[i])
+		#print('galactocen_vec: ',galactocen_vec)
+		#print('cos_phi: ',cos_phi[i])
+		#print('r :', r[i])
+		sin_phi[i] = galactocen_vec[1]/(cos_theta[i]*r[i])
+		#print('sin_phi: ',sin_phi[i])
 	return sin_theta, sin_phi, cos_theta, cos_phi
