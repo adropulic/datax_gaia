@@ -18,7 +18,7 @@ import matplotlib.gridspec as gridspec
 from scipy.stats import norm
 import keras
 from keras import backend as K
-
+import TransformCoords
 import argparse, ast
 import tensorflow as tf
 from tensorflow.keras import initializers
@@ -65,8 +65,11 @@ activation = results.activation
 print(datafilepath_train)
 print(datafilepath_val)
 print(datafilepath_test)
-if spec != "new" and datafilepath_train == "/tigress/ljchang/DataXGaia/data/galaxia_mock/training_set_500k.npz":
+if spec == "dimtest" and datafilepath_train == "/tigress/ljchang/DataXGaia/data/galaxia_mock/training_set_500k.npz":
     print("wrong input data for this spec")
+    sys.exit()
+if spec != "X2loss":
+    print("wrong input data")
     sys.exit()
 
 print(use_cols)
@@ -79,7 +82,7 @@ K.set_session(session)
 data_train = np.load(datafilepath_train)
 data_val = np.load(datafilepath_val)
 data_test = np.load(datafilepath_test)
-if spec == "new":
+if (spec == "new") or (spec == "X2loss"):
     data_train = data_train['data']
     data_val = data_val['data']
     data_test = data_test['data']
@@ -102,6 +105,13 @@ data_test = pd.DataFrame(data_test, columns=data_cols)
 
 # %%
 data_train.head()
+sin_theta_vel, sin_phi_vel ,cos_theta_vel, cos_phi_vel= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values ,np.array(data_test['radial_velocity'].values).astype(np.float32))
+vr_vel, vth_vel, vphi_vel = TransformCoords.cart_to_galcen(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values), np.deg2rad(data_test['b'].values) ,np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.array(data_test['radial_velocity'].values).astype(np.float32), data_test['pmra'].values, data_test['pmdec'].values,sin_theta_vel, sin_phi_vel, cos_theta_vel, cos_phi_vel) 
+vel_real_new =  np.array([vr_vel, vth_vel, vphi_vel]).T 
+df_vel = pd.DataFrame(vel_real_new, columns = ['vr', 'vtheta', 'vphi'])
+data_test['vr'] = df_vel['vr']
+data_test['vtheta'] = df_vel['vtheta']
+data_test['vphi'] = df_vel['vphi']
 
 # %%
 from sklearn.preprocessing import StandardScaler
@@ -262,22 +272,35 @@ global index
 import tensorflow as tf
 
 # %%
+#def LikelihoodLossFunction(y_true, y_pred):
+#    # shape of y_pred should be (nsamples, 2)
+#    # the first column should be the mean of the prediction
+#    # the second column is the confidence (number of standard deviations)
+##     print y_true.shape
+##     print y_pred.shape
+#    SIGMA = K.abs(y_pred[:, 1]) + 1e-6
+#
+#    LOC = y_pred[:, 0]
+#    
+#    X = y_true[:, 0]
+#    weights = y_true[:,1]
+#    ARG = K.abs(X - LOC) / (2 * K.abs(SIGMA))
+#    PREFACT = K.log(K.pow(2 * np.pi * K.square(SIGMA), -0.5))
+#    return K.mean((ARG - PREFACT) * weights)
+
 def LikelihoodLossFunction(y_true, y_pred):
     # shape of y_pred should be (nsamples, 2)
     # the first column should be the mean of the prediction
     # the second column is the confidence (number of standard deviations)
-#     print y_true.shape
-#     print y_pred.shape
     SIGMA = K.abs(y_pred[:, 1]) + 1e-6
 
     LOC = y_pred[:, 0]
-    
+
     X = y_true[:, 0]
     weights = y_true[:,1]
-    ARG = K.abs(X - LOC) / (2 * K.abs(SIGMA))
-    PREFACT = K.log(K.pow(2 * np.pi * K.square(SIGMA), -0.5))
+    ARG = K.pow((X - LOC),2) / (2 * K.pow(SIGMA,2))
+    PREFACT = K.log(K.pow(2 * np.pi * K.pow(SIGMA,2), -0.5))
     return K.mean((ARG - PREFACT) * weights)
-
 
 # %%
 def ConstantLikelihoodLossFunction(y_true, y_pred):
@@ -373,7 +396,7 @@ if not os.path.exists('/tigress/dropulic/'+folder_name):
 if (os.path.exists('/tigress/dropulic/'+folder_name) and not os.path.exists('/tigress/dropulic/'+folder_name+'/models_GALAXIA_nonn')):
     os.makedirs(folder_name+'/models_GALAXIA_nonn')
     os.makedirs(folder_name+'/logs')
-"""
+
 # %%
 """
 ## First training iteration
@@ -568,7 +591,7 @@ plt.show()
 
 # %%
 CombinedModel.save_weights(folder_name+"/models_GALAXIA_nonn/ModelWeights.h5")
-"""
+
 # %%
 """
 ### Evaluate the Test Set
@@ -580,7 +603,7 @@ test_preds_2 = CombinedModel.predict(X_test)
 
 #code for the 15 deg cone cut test
 brute_force_MC_sigma = False
-cone_cut = True
+cone_cut = False
 if cone_cut == True:
     df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
     data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
@@ -599,7 +622,8 @@ test_preds_2[:,1] = (test_preds_2[:,1] * stddev)+mu
 #quant = np.quantile(test_preds_2[:,1], [0.01,0.05,0.1,0.25,0.5])
 #quant = np.quantile(test_preds_2[:,1],[.01,.05])
 #rounded_quant = np.round(quant,2)
-quant = [5.0,10.0, 15.0, 30.0, 50.0, 70.0]
+#quant = [5.0,10.0, 15.0, 30.0, 50.0, 70.0]
+quant = [30.0,50.0, 60.0, 80.0, 100.0, 150.0]
 rounded_quant = quant
 quant_string = []
 for elem_i in range(len(rounded_quant)):
@@ -685,7 +709,7 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
         mc_vr_pred = []
         resample_test = []
         for star_i in range(0,len(test_preds_cut)):
-            #print(test_preds_cut[star_i,1])
+           # print(test_preds_cut[star_i,:])
             mc_vr_pred.append(np.random.normal(test_preds_cut[star_i,0],test_preds_cut[star_i,1]))
 
         mc_vr_pred_list.append(mc_vr_pred)
@@ -701,7 +725,7 @@ def monte_carlo(df, test_preds_cut, thresh, thresh_string):
         bin_values_list.append(n)
         
         #now for the coordinate-transformed histograms
-        vel_sph_coord = get_coord_transform(data_test, np.array(mc_vr_pred))
+        vel_sph_coord = get_coord_transform(data_test, np.array(mc_vr_pred).flatten().astype('float'))
         n_r , bins_r = np.histogram(vel_sph_coord[:,0], bins=50, range=(-250,250), density = True)
         n_th , bins_th = np.histogram(vel_sph_coord[:,1], bins=50, range=(-250,250), density = True)
         n_phi , bins_phi = np.histogram(vel_sph_coord[:,2], bins=50, range=(-450,0), density = True)
@@ -776,18 +800,21 @@ def get_coord_transform(df, train_preds):
     pmdec_cut = df['pmdec'].values[inds][:sub_num]
     rv_cut = df['radial_velocity'].values[inds][:sub_num]
     
-    U_pred_train,V_pred_train,W_pred_train = TransformCoords.pm2galcart(np.deg2rad(ra_cut[inds_train]),np.deg2rad(dec_cut[inds_train]),parallax_cut[inds_train],pmra_cut[inds_train],pmdec_cut[inds_train],train_preds.flatten().astype('float'))
+    #U_pred_train,V_pred_train,W_pred_train = TransformCoords.pm2galcart(np.deg2rad(ra_cut[inds_train]),np.deg2rad(dec_cut[inds_train]),parallax_cut[inds_train],pmra_cut[inds_train],pmdec_cut[inds_train],train_preds.flatten().astype('float'))
     
-    coords_cart_train = coords_cart[inds_train,:]
+    #coords_cart_train = coords_cart[inds_train,:]
     
-    vels_cart_pred_train = np.array([U_pred_train+v_LSR[0],V_pred_train+v_LSR[1],W_pred_train+v_LSR[2]]).T
+    #vels_cart_pred_train = np.array([U_pred_train+v_LSR[0],V_pred_train+v_LSR[1],W_pred_train+v_LSR[2]]).T
     
-    coords_sph_train, vels_sph_pred_train = TransformCoords.rvcart2sph_vec(coords_cart_train,vels_cart_pred_train)
+    #coords_sph_train, vels_sph_pred_train = TransformCoords.rvcart2sph_vec(coords_cart_train,vels_cart_pred_train)
     
-    coords_sph_train[:,[1,2]] = coords_sph_train[:,[2,1]] # Swap theta, phi into correct order
+    #coords_sph_train[:,[1,2]] = coords_sph_train[:,[2,1]] # Swap theta, phi into correct order
     
-    vels_sph_pred_train[:,[1,2]] = vels_sph_pred_train[:,[2,1]] # Swap theta, phi into correct order
+    #vels_sph_pred_train[:,[1,2]] = vels_sph_pred_train[:,[2,1]] # Swap theta, phi into correct order
+    sin_theta_gc, sin_phi_gc ,cos_theta_gc, cos_phi_gc= TransformCoords.calc_theta_phi(np.deg2rad(df['ra'].values),np.deg2rad(df['dec'].values),np.deg2rad(df['b'].values),np.deg2rad(df['l'].values), df['parallax'].values ,train_preds.astype(np.float32))
+    vr_gc, vth_gc, vphi_gc = TransformCoords.cart_to_galcen(np.deg2rad(df['ra'].values),np.deg2rad(df['dec'].values), np.deg2rad(df['b'].values) ,np.deg2rad(df['l'].values), df['parallax'].values,train_preds.astype(np.float32), df['pmra'].values, df['pmdec'].values,sin_theta_gc, sin_phi_gc, cos_theta_gc, cos_phi_gc)
     
+    vels_sph_pred_train = np.array([vr_gc, vth_gc, vphi_gc]).T
     return vels_sph_pred_train
 
 
@@ -796,13 +823,20 @@ def get_coord_transform(df, train_preds):
 def reload_data_per_cut(thresh, thresh_string):
     hold = 0
     data_test = np.load(datafilepath_test)
-    if spec == "new": data_test = data_test['data']
+    if (spec == "new") or (spec == "X2loss"): data_test = data_test['data']
     else: data_test = data_test['arr_0']
     data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error', 
                  'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
                  'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
                  'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
     data_test = pd.DataFrame(data_test, columns=data_cols)
+    sin_theta_vel, sin_phi_vel ,cos_theta_vel, cos_phi_vel= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values ,np.array(data_test['radial_velocity'].values).astype(np.float32))
+    vr_vel, vth_vel, vphi_vel = TransformCoords.cart_to_galcen(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values), np.deg2rad(data_test['b'].values) ,np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.array(data_test['radial_velocity'].values).astype(np.float32), data_test['pmra'].values, data_test['pmdec'].values,sin_theta_vel, sin_phi_vel, cos_theta_vel, cos_phi_vel) 
+    vel_real_new =  np.array([vr_vel, vth_vel, vphi_vel]).T 
+    df_vel = pd.DataFrame(vel_real_new, columns = ['vr', 'vtheta', 'vphi'])
+    data_test['vr'] = df_vel['vr']
+    data_test['vtheta'] = df_vel['vtheta']
+    data_test['vphi'] = df_vel['vphi']
     if cone_cut == True:
         df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
         data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
@@ -811,7 +845,7 @@ def reload_data_per_cut(thresh, thresh_string):
         data_test_cone_cut.drop(data_test_cone_cut[(data_test_cone_cut.cone_cond_2 > 15**2) & (data_test_cone_cut.cone_cond_1 > 15**2)].index, inplace=True)
         data_test = pd.DataFrame(data_test_cone_cut, columns=data_cols)
     indices_to_drop = []
-    if thresh < 80 and thresh > 0:
+    if thresh < 200.0 and thresh > 0:
         indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
         print(np.shape(indices_to_drop))
         data_test = data_test.loc[indices_to_drop]
@@ -942,27 +976,63 @@ def plot_test(thresh, thresh_string):
     vels_sph_pred_test = get_coord_transform(data_test, test_preds[:,0])
 
     ##### Going to calculate the error in galactocentric spherical coordinates using the matrix transformations####
-    sigma_vr, sigma_vth, sigma_vphi, vr_hl, vth_hl, vphi_hl = TransformCoords.error_toGalcen_sph(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.deg2rad(90-data_test['theta'].values),np.deg2rad(data_test['phi'].values),test_preds[:,1], test_preds[:,0], data_test['pmra'].values, data_test['pmdec'].values)
-    print('sigma_vr ',sigma_vr[0:50])
-    print('sigma_vth ',sigma_vth[0:50])
-    print('sigma_vphi ',sigma_vphi[0:50])
-    print('vr_hl ',vr_hl[0:50])
-    print('vth_hl ',vth_hl[0:50])
-    print('vphi_hl ',vphi_hl[0:50])
-    print('vr_lc ',vels_sph_pred_test[0:50,0])
-    print('vth_lc ',vels_sph_pred_test[0:50,1])
-    print('vphi_lc ',vels_sph_pred_test[0:50,2])
-    print('ra ',data_test['ra'].values[0:10])
-    print('dec ',data_test['dec'].values[0:10])
-    print('pmra ',data_test['pmra'].values[0:10])
-    print('pmdec ',data_test['pmdec'].values[0:10])
-    print('parallax ',data_test['parallax'].values[0:10])
-    print('l ',data_test['l'].values[0:10])
-    print('b ',data_test['b'].values[0:10])
-    print('90-theta ',90-data_test['theta'].values[0:10])
-    print('phi ',data_test['phi'].values[0:10])
-    print('sigma_los ',test_preds[0:10,1])
-    print('pred_vlos ',test_preds[0:10,0])
+    sin_theta_gc, sin_phi_gc ,cos_theta_gc, cos_phi_gc= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values, test_preds[:,0])
+    sigma_vr, sigma_vth, sigma_vphi = TransformCoords.error_toGalcen_sph(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.deg2rad(90-data_test['theta'].values),np.deg2rad(data_test['phi'].values),test_preds[:,1], test_preds[:,0], data_test['pmra'].values, data_test['pmdec'].values, sin_theta_gc, sin_phi_gc, cos_theta_gc, cos_phi_gc)
+    #print('sin_theta_gc ',sin_theta_gc[0:10])
+    #print('sin_phi_gc ',sin_phi_gc[0:10])
+    #print('cos_theta_gc ',cos_theta_gc[0:10])
+    #print('cos_phi_gc ',cos_phi_gc[0:10])
+    #print('sigma_vr ',sigma_vr[0:50])
+    #print('sigma_vr ',np.isnan(np.sum(sigma_vr)))
+    #print('sigma_vr ',np.isinf(np.sum(sigma_vr)))
+    #print('sigma_vth ',sigma_vth[0:50])
+    #print('sigma_vth ',np.isnan(np.sum(sigma_vth)))
+    #print('sigma_vth ',np.isinf(np.sum(sigma_vth)))
+    #print('sigma_vphi ',sigma_vphi[0:50])
+    #print('sigma_vphi ',np.isnan(np.sum(sigma_vphi)))
+    #print('sigma_vphi ',np.isinf(np.sum(sigma_vphi)))
+    #np.save('sigma_vr.npy' ,sigma_vr)
+    #np.save('sigma_vth.npy' ,sigma_vth)
+    #np.save('sigma_vphi.npy' ,sigma_vphi)
+    #np.save('error_vr_MC.npy',error_vr_MC)
+    #np.save('error_vth_MC.npy',error_vth_MC)
+    #np.save('error_vphi_MC.npy',error_vphi_MC)
+    #np.save('vtheta_pred_lc.npy', vels_sph_pred_test[:,1])
+    #np.save('vr_pred_lc.npy', vels_sph_pred_test[:,0])
+    #np.save('vphi_pred_lc.npy', vels_sph_pred_test[:,2])
+    #np.save('vlos_pred_lc.npy', test_preds[:,0])
+    #np.save('vr_lc.npy',(data_test['vr']).values)
+    #np.save('vtheta_lc.npy',(data_test['vtheta']).values)
+    #np.save('vphi_lc.npy',(data_test['vphi']).values)
+    #np.save('b.npy ',data_test['b'].values)
+    #np.save('ra.npy ',data_test['ra'].values)
+    #np.save('dec.npy ',data_test['dec'].values)
+    #print('vr_hl ',vr_hl[0:50])
+    #print('vth_hl ',vth_hl[0:50])
+    #print('vphi_hl ',vphi_hl[0:50])
+    #print('vr_lc ',vels_sph_pred_test[0:50,0])
+    #print('vth_lc ',vels_sph_pred_test[0:50,1])
+    #print('vphi_lc ',vels_sph_pred_test[0:50,2])
+    #print('ra ',data_test['ra'].values[0:10])
+    #print('dec ',data_test['dec'].values[0:10])
+    #print('pmra ',data_test['pmra'].values[0:10])
+    #print('pmdec ',data_test['pmdec'].values[0:10])
+    #print('parallax ',data_test['parallax'].values[0:10])
+    #print('l ',data_test['l'].values[0:10])
+    #print('b ',data_test['b'].values[0:10])
+    #print('90-theta ',90-data_test['theta'].values[0:10])
+    #print('phi ',data_test['phi'].values[0:10])
+    #print('sigma_los ',test_preds[0:50,1])
+    #print('error_vr_MC ',error_vr_MC[0:50])
+    #print('error_vr_MC ',np.isnan(np.sum(error_vr_MC)))
+    #print('error_vr_MC ',np.isinf(np.sum(error_vr_MC)))
+    #print('error_vth_MC ',error_vth_MC[0:50])
+    #print('error_vth_MC ',np.isnan(np.sum(error_vth_MC)))
+    #print('error_vth_MC ',np.isinf(np.sum(error_vth_MC)))
+    #print('error_vphi_MC ',error_vphi_MC[0:50])
+    #print('error_vphi_MC ',np.isnan(np.sum(error_vphi_MC)))
+    #print('error_vphi_MC ',np.isinf(np.sum(error_vphi_MC)))
+    #print('pred_vlos ',test_preds[0:10,0])
     #need to calculate MC kde by hand
     vbins = np.linspace(y_low,y_high,51)
     bin_centers = (vbins[1:]+vbins[:-1])/2
@@ -1056,6 +1126,7 @@ def plot_test(thresh, thresh_string):
     ################################
     #going to get the coord transform of v_los = 0
     vels_sph_coord_vlos0 = get_coord_transform(data_test,np.zeros_like(test_preds[:,0]))
+    print('vels_vr_vlos0: ', vels_sph_coord_vlos0[0:50,0])
     hb_r = ax[3,0].hexbin((data_test['vr']).values, vels_sph_pred_test[:,0],gridsize=100, norm = LogNorm(),extent=[-250, 250, -250, 250],rasterized=True)
     Rsquare_vr = coeff_determination((data_test['vr']).values, vels_sph_pred_test[:,0])
     if brute_force_MC_sigma == True: Xsquare_vr = chi_square((data_test['vr']).values, vels_sph_pred_test[:,0],error_vr_MC)
@@ -1377,13 +1448,13 @@ rounded_quant= np.insert(rounded_quant,0,0.0)
 quant_string = np.insert(quant_string,0, '0')
 #print(rounded_quant)
 #print(quant_string)
-plot_test(0,'0')
+#plot_test(0,'0')
 
-#for elem_i in range(len(rounded_quant)):
-#    elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
-#    #note here it won't calculate the overall because it doesn not save the np file with leq0
-#    if elements == False: continue 
-#    plot_test(rounded_quant[elem_i],quant_string[elem_i])
+for elem_i in range(len(rounded_quant)):
+    elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
+    #note here it won't calculate the overall because it doesn not save the np file with leq0
+    if elements == False: continue 
+    plot_test(rounded_quant[elem_i],quant_string[elem_i])
 
 # %%
 #CombinedModel.save(folder_name+'/network.h5')
