@@ -68,9 +68,9 @@ print(datafilepath_test)
 if spec == "dimtest" and datafilepath_train == "/tigress/ljchang/DataXGaia/data/galaxia_mock/training_set_500k.npz":
     print("wrong input data for this spec")
     sys.exit()
-if spec != "X2loss":
-    print("wrong input data")
-    sys.exit()
+#if spec != "X2loss":
+#    print("wrong input data")
+#    sys.exit()
 
 print(use_cols)
 # %%
@@ -350,24 +350,24 @@ initializer = tf.keras.initializers.glorot_uniform(seed=1)
 inputs = Input(shape=(len(use_cols),))
 nlayers = nnodes
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
-MeanEst = (Dropout(0.1))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(nlayers, activation=activation, kernel_initializer=initializer))(MeanEst)
-MeanEst = (Dropout(0.1))(MeanEst)
+#MeanEst = (Dropout(0.1))(MeanEst)
 MeanEst = (Dense(1, activation='linear', kernel_initializer=initializer))(MeanEst)
 MeanModel = Model(inputs=[inputs], outputs=MeanEst)
 
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(inputs)
-ConfEst = (Dropout(0.1))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(nlayers, activation=activation, kernel_initializer=initializer))(ConfEst)
-ConfEst = (Dropout(0.1))(ConfEst)
+#ConfEst = (Dropout(0.1))(ConfEst)
 ConfEst= (Dense(1, activation='relu', kernel_initializer=initializer))(ConfEst)
 ConfModel = Model(inputs=[inputs], outputs=ConfEst)
 
@@ -383,7 +383,7 @@ import os
 num_samp = str(data_test.shape[0])
 act_func = activation
 neurons = 'D'+str(nnodes)
-dropout = 'p1dropout_seed1'
+dropout = 'nodropout_seed1test1'
 lweights = weight_type
 spec = spec
 folder_name = 'G_train_2it_'+num_samp+'_'+act_func+'_'+neurons+'_'+dropout+'_'+input_vars+'_'+lweights+'_'+spec
@@ -396,7 +396,7 @@ if not os.path.exists('/tigress/dropulic/'+folder_name):
 if (os.path.exists('/tigress/dropulic/'+folder_name) and not os.path.exists('/tigress/dropulic/'+folder_name+'/models_GALAXIA_nonn')):
     os.makedirs(folder_name+'/models_GALAXIA_nonn')
     os.makedirs(folder_name+'/logs')
-
+"""
 # %%
 """
 ## First training iteration
@@ -591,7 +591,7 @@ plt.show()
 
 # %%
 CombinedModel.save_weights(folder_name+"/models_GALAXIA_nonn/ModelWeights.h5")
-
+"""
 # %%
 """
 ### Evaluate the Test Set
@@ -603,7 +603,7 @@ test_preds_2 = CombinedModel.predict(X_test)
 
 #code for the 15 deg cone cut test
 brute_force_MC_sigma = False
-cone_cut = False
+cone_cut = True
 if cone_cut == True:
     df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
     data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
@@ -1426,8 +1426,9 @@ def plot_test(thresh, thresh_string):
     fig.suptitle(txt)
 
 
-    fig.savefig(folder_name+'/'+filename+'_withKL_sigmaleq_'+thresh_string+'.png',bbox_inches='tight',rasterized=True)
-    np.save(folder_name+'/'+filename+'_testpreds_sigmaleq_'+thresh_string+'.npy',test_preds)
+    if cone_cut == False: fig.savefig(folder_name+'/'+filename+'_withKL_sigmaleq_'+thresh_string+'.png',bbox_inches='tight',rasterized=True)
+    if cone_cut == False: np.save(folder_name+'/'+filename+'_testpreds_sigmaleq_'+thresh_string+'.npy',test_preds)
+    if cone_cut == True: fig.savefig(folder_name+'/'+filename+'_withKL_conecut_sigmaleq_'+thresh_string+'.png',bbox_inches='tight',rasterized=True)
     clb1.remove()
     clb2.remove()
     clb3.remove()
