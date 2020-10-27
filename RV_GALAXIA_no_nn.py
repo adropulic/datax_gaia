@@ -92,11 +92,11 @@ else:
     data_test = data_test['arr_0']
 
 # %%
-data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error', 
+if (spec == "new") or (spec == "X2loss"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error', 
              'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
              'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
              'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
-
+if (spec == "dimtest")or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity','phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff']
 
 # %%
 data_train = pd.DataFrame(data_train, columns=data_cols)
@@ -113,6 +113,21 @@ data_test['vr'] = df_vel['vr']
 data_test['vtheta'] = df_vel['vtheta']
 data_test['vphi'] = df_vel['vphi']
 
+sin_theta_vel_train, sin_phi_vel_train ,cos_theta_vel_train, cos_phi_vel_train= TransformCoords.calc_theta_phi(np.deg2rad(data_train['ra'].values),np.deg2rad(data_train['dec'].values),np.deg2rad(data_train['b'].values),np.deg2rad(data_train['l'].values), data_train['parallax'].values ,np.array(data_train['radial_velocity'].values).astype(np.float32))
+vr_vel_train, vth_vel_train, vphi_vel_train = TransformCoords.cart_to_galcen(np.deg2rad(data_train['ra'].values),np.deg2rad(data_train['dec'].values), np.deg2rad(data_train['b'].values) ,np.deg2rad(data_train['l'].values), data_train['parallax'].values,np.array(data_train['radial_velocity'].values).astype(np.float32), data_train['pmra'].values, data_train['pmdec'].values,sin_theta_vel_train, sin_phi_vel_train, cos_theta_vel_train, cos_phi_vel_train)
+vel_real_new_train =  np.array([vr_vel_train, vth_vel_train, vphi_vel_train]).T
+df_vel_train = pd.DataFrame(vel_real_new_train, columns = ['vr', 'vtheta', 'vphi'])
+data_train['vr'] = df_vel_train['vr']
+data_train['vtheta'] = df_vel_train['vtheta']
+data_train['vphi'] = df_vel_train['vphi']
+
+sin_theta_vel_val, sin_phi_vel_val ,cos_theta_vel_val, cos_phi_vel_val= TransformCoords.calc_theta_phi(np.deg2rad(data_val['ra'].values),np.deg2rad(data_val['dec'].values),np.deg2rad(data_val['b'].values),np.deg2rad(data_val['l'].values), data_val['parallax'].values ,np.array(data_val['radial_velocity'].values).astype(np.float32))
+vr_vel_val, vth_vel_val, vphi_vel_val = TransformCoords.cart_to_galcen(np.deg2rad(data_val['ra'].values),np.deg2rad(data_val['dec'].values), np.deg2rad(data_val['b'].values) ,np.deg2rad(data_val['l'].values), data_val['parallax'].values,np.array(data_val['radial_velocity'].values).astype(np.float32), data_val['pmra'].values, data_val['pmdec'].values,sin_theta_vel_val, sin_phi_vel_val, cos_theta_vel_val, cos_phi_vel_val)
+vel_real_new_val =  np.array([vr_vel_val, vth_vel_val, vphi_vel_val]).T
+df_vel_val = pd.DataFrame(vel_real_new_val, columns = ['vr', 'vtheta', 'vphi'])
+data_val['vr'] = df_vel_val['vr']
+data_val['vtheta'] = df_vel_val['vtheta']
+data_val['vphi'] = df_vel_val['vphi']
 # %%
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -221,11 +236,11 @@ data_test['sin(b)'] = data_test['b'].apply(lambda x: np.sin(x))
 data_train.head()
 
 # %%
-data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error', 
+if (spec == "new") or (spec == "X2loss"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error', 
              'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
              'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
              'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
-
+if (spec == "dimtest") or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity', 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
 # %%
 SS = StandardScaler()
 mu = np.mean((data_train['radial_velocity']).values)
@@ -252,7 +267,8 @@ print(input_vars)
 # Make the design matrix
 X_train = data_train_scaled[use_cols].values
 y_train = (data_train_scaled['radial_velocity']).values
-
+print(X_train)
+print(y_train)
 X_val = data_val_scaled[use_cols].values
 y_val = (data_val_scaled['radial_velocity']).values
 
@@ -396,7 +412,7 @@ if not os.path.exists('/tigress/dropulic/'+folder_name):
 if (os.path.exists('/tigress/dropulic/'+folder_name) and not os.path.exists('/tigress/dropulic/'+folder_name+'/models_GALAXIA_nonn')):
     os.makedirs(folder_name+'/models_GALAXIA_nonn')
     os.makedirs(folder_name+'/logs')
-"""
+
 # %%
 """
 ## First training iteration
@@ -591,7 +607,7 @@ plt.show()
 
 # %%
 CombinedModel.save_weights(folder_name+"/models_GALAXIA_nonn/ModelWeights.h5")
-"""
+
 # %%
 """
 ### Evaluate the Test Set
@@ -603,7 +619,7 @@ test_preds_2 = CombinedModel.predict(X_test)
 
 #code for the 15 deg cone cut test
 brute_force_MC_sigma = False
-cone_cut = True
+cone_cut = False
 if cone_cut == True:
     df_test_preds_2 = pd.DataFrame({'mu':test_preds_2[:,0], 'sigma':test_preds_2[:,1]})
     data_test_cone_cut = pd.concat([data_test,df_test_preds_2], axis = 1)
@@ -648,11 +664,16 @@ def save_indices(thresh, thresh_string):
     print(len(list_err_lt))
     #now need indices of these values in data
     indices = []
-    if not os.path.exists('/tigress/dropulic/'+folder_name+'/data_indices_error_lt_'+thresh_string+'.npy'):
+    if cone_cut == False and not os.path.exists('/tigress/dropulic/'+folder_name+'/data_indices_error_lt_'+thresh_string+'.npy'):
     	for i in range(len(list_err_lt)):
         	indices.append(data_test[data_test['radial_velocity']==(list_err_lt[i])].index[0])
-    	np.save(folder_name+'/data_indices_error_lt_'+thresh_string,indices)
-    indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
+    	if cone_cut == False: np.save(folder_name+'/data_indices_error_lt_'+thresh_string,indices)
+    if cone_cut == True and not os.path.exists('/tigress/dropulic/'+folder_name+'/data_indices_error_conecut_lt_'+thresh_string+'.npy'):
+    	for i in range(len(list_err_lt)):
+        	indices.append(data_test[data_test['radial_velocity']==(list_err_lt[i])].index[0])
+    	if cone_cut == True: np.save(folder_name+'/data_indices_error_conecut_lt_'+thresh_string,indices)
+    if cone_cut == True: indices_to_drop = np.load(folder_name+'/data_indices_error_conecut_lt_'+thresh_string+'.npy')
+    if cone_cut == False: indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
     if len(indices_to_drop) > 0: is_elem = True
     else: is_elem = False
     return is_elem
@@ -787,18 +808,18 @@ def get_coord_transform(df, train_preds):
     # Galaxia
     v_LSR = [11.1, 239.08, 7.25]
     r_LSR = [-8.,0.,0.015]
-    inds = np.arange(df.shape[0])
-    inds_train = np.arange(df.shape[0])
-    sub_num = df.shape[0]
-    vels_sph = np.array([df['vr'].values[inds][:sub_num],df['vtheta'].values[inds][:sub_num],df['vphi'].values[inds][:sub_num]]).T
-    coords_cart = np.array([df['x'].values[inds][:sub_num],df['y'].values[inds][:sub_num],df['z'].values[inds][:sub_num]]).T
+    #inds = np.arange(df.shape[0])
+    #inds_train = np.arange(df.shape[0])
+    #sub_num = df.shape[0]
+    #vels_sph = np.array([df['vr'].values[inds][:sub_num],df['vtheta'].values[inds][:sub_num],df['vphi'].values[inds][:sub_num]]).T
+    #coords_cart = np.array([df['x'].values[inds][:sub_num],df['y'].values[inds][:sub_num],df['z'].values[inds][:sub_num]]).T
     
-    ra_cut = df['ra'].values[inds][:sub_num]
-    dec_cut = df['dec'].values[inds][:sub_num]
-    parallax_cut = df['parallax'].values[inds][:sub_num]
-    pmra_cut = df['pmra'].values[inds][:sub_num]
-    pmdec_cut = df['pmdec'].values[inds][:sub_num]
-    rv_cut = df['radial_velocity'].values[inds][:sub_num]
+    #ra_cut = df['ra'].values[inds][:sub_num]
+    #dec_cut = df['dec'].values[inds][:sub_num]
+    #parallax_cut = df['parallax'].values[inds][:sub_num]
+    #pmra_cut = df['pmra'].values[inds][:sub_num]
+    #pmdec_cut = df['pmdec'].values[inds][:sub_num]
+    #rv_cut = df['radial_velocity'].values[inds][:sub_num]
     
     #U_pred_train,V_pred_train,W_pred_train = TransformCoords.pm2galcart(np.deg2rad(ra_cut[inds_train]),np.deg2rad(dec_cut[inds_train]),parallax_cut[inds_train],pmra_cut[inds_train],pmdec_cut[inds_train],train_preds.flatten().astype('float'))
     
@@ -829,6 +850,10 @@ def reload_data_per_cut(thresh, thresh_string):
                  'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
                  'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
                  'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
+    if (spec == "dimtest") or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error',
+                  'pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity',
+                  'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
+                  'feh','teff']
     data_test = pd.DataFrame(data_test, columns=data_cols)
     sin_theta_vel, sin_phi_vel ,cos_theta_vel, cos_phi_vel= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values ,np.array(data_test['radial_velocity'].values).astype(np.float32))
     vr_vel, vth_vel, vphi_vel = TransformCoords.cart_to_galcen(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values), np.deg2rad(data_test['b'].values) ,np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.array(data_test['radial_velocity'].values).astype(np.float32), data_test['pmra'].values, data_test['pmdec'].values,sin_theta_vel, sin_phi_vel, cos_theta_vel, cos_phi_vel) 
@@ -846,7 +871,8 @@ def reload_data_per_cut(thresh, thresh_string):
         data_test = pd.DataFrame(data_test_cone_cut, columns=data_cols)
     indices_to_drop = []
     if thresh < 200.0 and thresh > 0:
-        indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
+        if cone_cut == True: indices_to_drop = np.load(folder_name+'/data_indices_error_conecut_lt_'+thresh_string+'.npy')
+        if cone_cut == False: indices_to_drop = np.load(folder_name+'/data_indices_error_lt_'+thresh_string+'.npy')
         print(np.shape(indices_to_drop))
         data_test = data_test.loc[indices_to_drop]
     elif thresh == 0: 
@@ -962,8 +988,8 @@ def plot_test(thresh, thresh_string):
     ax[0,0].hist((data_test['radial_velocity']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True, label = 'test', density = True )
     ax[0,0].hist(test_preds[:,0], bins=100, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3, label = 'predicted', density = True)
     ax[0,0].set_xlabel(r'$v_{\rm{los}}$', labelpad =-2)
-    if thresh == 0 and spec == "new": ax[0,0].set_title('Test set, 100 bins, no sigma cut, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
-    if thresh != 0 and spec == "new": ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
+    if thresh == 0 and (spec == "new" or spec == "newtm"): ax[0,0].set_title('Test set, 100 bins, no sigma cut, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
+    if thresh != 0 and (spec == "new" or spec == "newtm"): ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
     if thresh == 0 and spec == "dimtest":ax[0,0].set_title('Test Set, '+str(len(data_test['radial_velocity'].values))+' stars \n Dim stars (photo_g_mean_mag$\geq$13)', fontsize = 11)
     if thresh != 0 and spec == "dimtest":ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars\n Dim stars (photo_g_mean_mag$\geq$13)',fontsize=14)	
     ax[0,0].legend(loc = "upper right",prop={'size': 10})
@@ -977,7 +1003,7 @@ def plot_test(thresh, thresh_string):
 
     ##### Going to calculate the error in galactocentric spherical coordinates using the matrix transformations####
     sin_theta_gc, sin_phi_gc ,cos_theta_gc, cos_phi_gc= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values, test_preds[:,0])
-    sigma_vr, sigma_vth, sigma_vphi = TransformCoords.error_toGalcen_sph(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.deg2rad(90-data_test['theta'].values),np.deg2rad(data_test['phi'].values),test_preds[:,1], test_preds[:,0], data_test['pmra'].values, data_test['pmdec'].values, sin_theta_gc, sin_phi_gc, cos_theta_gc, cos_phi_gc)
+    sigma_vr, sigma_vth, sigma_vphi = TransformCoords.error_toGalcen_sph(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values,test_preds[:,1], test_preds[:,0], data_test['pmra'].values, data_test['pmdec'].values, sin_theta_gc, sin_phi_gc, cos_theta_gc, cos_phi_gc)
     #print('sin_theta_gc ',sin_theta_gc[0:10])
     #print('sin_phi_gc ',sin_phi_gc[0:10])
     #print('cos_theta_gc ',cos_theta_gc[0:10])
@@ -1124,6 +1150,13 @@ def plot_test(thresh, thresh_string):
     ################################
     ##### 'vr','vphi','vtheta' #####
     ################################
+    if thresh == 0:
+        data_cols_vel_ellipse = ['vr_pred','vth_pred','vphi_pred','sigma_vr','sigma_vth','sigma_vphi','vlos_pred','sigma_los','vr_true','vth_true','vphi_true', 'vlos_true']
+        data_ellipse = np.array([vels_sph_pred_test[:,0],vels_sph_pred_test[:,1],vels_sph_pred_test[:,2], sigma_vr, sigma_vth, sigma_vphi, test_preds[:,0], test_preds[:,1], data_test['vr'].values, data_test['vtheta'].values, data_test['vphi'].values,data_test['radial_velocity'].values]).T
+        ellipse_df = pd.DataFrame(data_ellipse, columns=data_cols_vel_ellipse)
+        ellipse_df['feh'] = data_test['feh'].astype(float)
+        np.savez(folder_name+'/'+'ellipse_df.npz', ellipse_df.to_numpy())
+
     #going to get the coord transform of v_los = 0
     vels_sph_coord_vlos0 = get_coord_transform(data_test,np.zeros_like(test_preds[:,0]))
     print('vels_vr_vlos0: ', vels_sph_coord_vlos0[0:50,0])
