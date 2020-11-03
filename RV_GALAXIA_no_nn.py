@@ -96,7 +96,9 @@ if (spec == "new") or (spec == "X2loss"): data_cols = ['source_id', 'l', 'b', 'r
              'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
              'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
              'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
-if (spec == "dimtest")or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity','phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff']
+if (spec == "dimtest")or (spec == "newtm")or (spec == "2mil"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity','phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff']
+
+if spec == "highz": data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity','phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff','z']
 
 # %%
 data_train = pd.DataFrame(data_train, columns=data_cols)
@@ -240,7 +242,9 @@ if (spec == "new") or (spec == "X2loss"): data_cols = ['source_id', 'l', 'b', 'r
              'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
              'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
              'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
-if (spec == "dimtest") or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity', 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
+if (spec == "dimtest") or (spec == "newtm")or (spec == "2mil"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity', 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
+
+if spec == "highz": data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error','pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity','phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag','feh','teff','z','vr','vphi','vtheta','cos(l)','sin(l)','cos(b)','sin(b)']
 # %%
 SS = StandardScaler()
 mu = np.mean((data_train['radial_velocity']).values)
@@ -850,10 +854,14 @@ def reload_data_per_cut(thresh, thresh_string):
                  'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'radial_velocity',
                  'photo_g_mean_mag', 'photo_bp_mean_mag', 'photo_rp_mean_mag',
                  'x','y','z','vx','vy','vz','r','phi','theta','vr','vphi','vtheta']
-    if (spec == "dimtest") or (spec == "newtm"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error',
+    if (spec == "dimtest") or (spec == "newtm") or (spec == "2mil"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error',
                   'pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity',
                   'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
                   'feh','teff']
+    if (spec == "highz"): data_cols = ['source_id', 'l', 'b', 'ra', 'dec', 'parallax', 'parallax_error',
+                  'pmra', 'pmra_error', 'pmdec','pmdec_error', 'radial_velocity',
+                  'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
+                  'feh','teff','z']
     data_test = pd.DataFrame(data_test, columns=data_cols)
     sin_theta_vel, sin_phi_vel ,cos_theta_vel, cos_phi_vel= TransformCoords.calc_theta_phi(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values),np.deg2rad(data_test['b'].values),np.deg2rad(data_test['l'].values), data_test['parallax'].values ,np.array(data_test['radial_velocity'].values).astype(np.float32))
     vr_vel, vth_vel, vphi_vel = TransformCoords.cart_to_galcen(np.deg2rad(data_test['ra'].values),np.deg2rad(data_test['dec'].values), np.deg2rad(data_test['b'].values) ,np.deg2rad(data_test['l'].values), data_test['parallax'].values,np.array(data_test['radial_velocity'].values).astype(np.float32), data_test['pmra'].values, data_test['pmdec'].values,sin_theta_vel, sin_phi_vel, cos_theta_vel, cos_phi_vel) 
@@ -988,8 +996,8 @@ def plot_test(thresh, thresh_string):
     ax[0,0].hist((data_test['radial_velocity']).values, bins=50, range=(y_low,y_high), histtype='bar', edgecolor = 'white', color= 'tab:blue',alpha = 0.5, fill = True, label = 'test', density = True )
     ax[0,0].hist(test_preds[:,0], bins=100, range=(y_low,y_high), histtype='step',color = 'darkslateblue', linewidth = 1.3, label = 'predicted', density = True)
     ax[0,0].set_xlabel(r'$v_{\rm{los}}$', labelpad =-2)
-    if thresh == 0 and (spec == "new" or spec == "newtm"): ax[0,0].set_title('Test set, 100 bins, no sigma cut, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
-    if thresh != 0 and (spec == "new" or spec == "newtm"): ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
+    if thresh == 0 and (spec == "new" or spec == "newtm" or spec == "highz" or spec == "2mil"): ax[0,0].set_title('Test set, 100 bins, no sigma cut, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
+    if thresh != 0 and (spec == "new" or spec == "newtm"or spec == "highz" or spec == "2mil"): ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars',fontsize=14)
     if thresh == 0 and spec == "dimtest":ax[0,0].set_title('Test Set, '+str(len(data_test['radial_velocity'].values))+' stars \n Dim stars (photo_g_mean_mag$\geq$13)', fontsize = 11)
     if thresh != 0 and spec == "dimtest":ax[0,0].set_title('Test set, $\sigma \leq$'+str(thresh)+' km/s, '+str(len(test_preds[:,0]))+' stars\n Dim stars (photo_g_mean_mag$\geq$13)',fontsize=14)	
     ax[0,0].legend(loc = "upper right",prop={'size': 10})
@@ -1482,13 +1490,13 @@ rounded_quant= np.insert(rounded_quant,0,0.0)
 quant_string = np.insert(quant_string,0, '0')
 #print(rounded_quant)
 #print(quant_string)
-#plot_test(0,'0')
+plot_test(0,'0')
 
-for elem_i in range(len(rounded_quant)):
-    elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
-    #note here it won't calculate the overall because it doesn not save the np file with leq0
-    if elements == False: continue 
-    plot_test(rounded_quant[elem_i],quant_string[elem_i])
+#for elem_i in range(len(rounded_quant)):
+#    elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
+#    #note here it won't calculate the overall because it doesn not save the np file with leq0
+#    if elements == False: continue 
+#    plot_test(rounded_quant[elem_i],quant_string[elem_i])
 
 # %%
 #CombinedModel.save(folder_name+'/network.h5')
