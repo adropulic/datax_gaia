@@ -423,7 +423,7 @@ if (os.path.exists('/tigress/dropulic/'+folder_name) and not os.path.exists('/ti
 # %%
 """
 ## First training iteration
-
+"""
 
 # %%
 CheckPoint = ModelCheckpoint(folder_name+'/models_GALAXIA_nonn/TrainingMean_{epoch:04d}.hdf5',
@@ -618,7 +618,7 @@ CombinedModel.save_weights(folder_name+"/models_GALAXIA_nonn/ModelWeights.h5")
 # %%
 """
 ### Evaluate the Test Set
-
+"""
 
 # %%
 CombinedModel.load_weights(folder_name+'/models_GALAXIA_nonn/' + 'ModelWeights.h5')
@@ -646,7 +646,8 @@ test_preds_2[:,1] = (test_preds_2[:,1] * stddev)+mu
 #quant = np.quantile(test_preds_2[:,1],[.01,.05])
 #rounded_quant = np.round(quant,2)
 #quant = [5.0,10.0, 15.0, 30.0, 50.0, 70.0]
-quant = [30.0,50.0, 60.0, 80.0, 100.0, 150.0]
+#quant = [30.0,50.0, 60.0, 80.0, 100.0, 150.0]
+quant = [60.0, 80.0, 100.0, 150.0]
 rounded_quant = quant
 quant_string = []
 for elem_i in range(len(rounded_quant)):
@@ -1452,11 +1453,11 @@ def plot_test(thresh, thresh_string):
 
 # %%
 #if not os.path.exists(folder_name+'/'+filename+'_withKL_sigmaleq_0.png'):
-rounded_quant= np.insert(rounded_quant,0,0.0)
-quant_string = np.insert(quant_string,0, '0')
+#rounded_quant= np.insert(rounded_quant,0,0.0)
+#quant_string = np.insert(quant_string,0, '0')
 #print(rounded_quant)
 #print(quant_string)
-plot_test(0,'0')
+#plot_test(0,'0')
 
 for elem_i in range(len(rounded_quant)):
     elements  = save_indices(rounded_quant[elem_i],quant_string[elem_i])
