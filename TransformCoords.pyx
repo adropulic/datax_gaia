@@ -771,8 +771,8 @@ def galcensph2pm(double[:] ra, double[:] dec, double[:] b, double[:] l, double[:
 		#coords_cart = np.array([ddot[i], pmra[i]*(1/parallax[i])*fact, pmdec[i]*(1/parallax[i])*fact])
 		coords_pm = np.matmul(np.matmul(P_inv,M_inv),(coords_sph - np.matmul(np.matmul(mat_1, mat_2), solar_corr)))
 		vlos[i] = coords_pm[0]
-		pmra[i] = coords_pm[1]/(parallax[i]*fact)
-		pmdec[i] = coords_pm[2]/(parallax[i]*fact)
+		pmra[i] = (coords_pm[1]*parallax[i])/fact
+		pmdec[i] = (coords_pm[2]*parallax[i])/fact
 	return vlos, pmra, pmdec
 
 @cython.boundscheck(False)
