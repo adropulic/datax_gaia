@@ -837,3 +837,38 @@ def lb2radec(double[:] l, double[:] b):
 		dec[i] = np.arcsin(coords_radec[2])
 		ra[i] = atan2(coords_radec[1],coords_radec[0])+np.pi #add pi to range from 0 to 360
 	return ra, dec
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def radec2lb_adri(double[:] ra, double[:] dec):
+	"""
+	Transforms positions from Galactic cartesian to l,b
+        #does not want pi-shifted ra/dec as inputs
+	"""
+	cdef float alpha_NGP = 192.85948*pi/180
+	cdef float delta_NGP = 27.12825*pi/180
+	cdef double theta = 122.932*pi/180
+	cdef float k = 4.74047
+	cdef np.ndarray[double, ndim=1 , mode='c'] solar_corr = np.array([11.1, 239.08, 7.25])
+	cdef float galcen_distance = 8.0004 # in kpc
+	cdef float z_sun = 0.015 # in kpc
+	cdef float mas_per_rad = 2.062648062471e8
+	cdef float s_per_year = 31557600
+	cdef float km_per_kpc = 3.08567758e16
+	cdef int nstars = len(ra)
+	cdef np.ndarray[double, ndim=2, mode='c'] T1 = np.array([[cos(theta),sin(theta),0],[sin(theta),-cos(theta),0],[0,0,1]])
+	cdef np.ndarray[double, ndim=2, mode='c'] T2 = np.array([[-sin(delta_NGP),0,cos(delta_NGP)],[0,1,0],[cos(delta_NGP),0,sin(delta_NGP)]])
+	cdef np.ndarray[double, ndim=2, mode='c'] T3 = np.array([[cos(alpha_NGP),sin(alpha_NGP),0],[-sin(alpha_NGP),cos(alpha_NGP),0],[0,0,1]])
+
+	cdef np.ndarray[double, ndim=2, mode='c'] T = np.matmul(np.matmul(T1,T2),T3)
+
+	cdef np.ndarray[double, ndim=1, mode='c'] coords_radec = np.empty(3,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] l  = np.empty(nstars,dtype=np.float)
+	cdef np.ndarray[double, ndim=1, mode='c'] b  = np.empty(nstars,dtype=np.float)
+
+	for i in range(nstars):
+		coords_radec = np.array([cos(dec[i])*cos(ra[i]), cos(dec[i])*sin(ra[i]), sin(dec[i])])
+		coords_lb = np.matmul(T, coords_radec)
+		b[i] = np.arcsin(coords_lb[2])
+		l[i] = atan2(coords_lb[1],coords_lb[0])+np.pi #add pi to range from 0 to 360
+	return l, b
